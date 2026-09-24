@@ -5,7 +5,9 @@
  * natural sight-alignment pauses (350ms-1400ms), and raw CDP input event dispatching.
  */
 
+import path from 'path';
 import puppeteer, { Browser, Page, CDPSession } from 'puppeteer-core';
+import { ChromeLauncher } from '../launcher/ChromeLauncher.js';
 import { Point, BoundingBox } from '../humanizer/CursorPhysics.js';
 import { KeystrokeAction } from '../humanizer/KeystrokeSynthesizer.js';
 
@@ -33,10 +35,28 @@ export class BrowserClient {
 
   public async connect(): Promise<boolean> {
     try {
-      this.browser = await puppeteer.connect({
-        browserURL: this.browserUrl,
-        defaultViewport: null,
-      });
+      try {
+        this.browser = await puppeteer.connect({
+          browserURL: this.browserUrl,
+          defaultViewport: null,
+        });
+      } catch {
+        console.log(`[BrowserClient] Direct CDP attach failed; launching Chrome instance directly...`);
+        const chromePath = ChromeLauncher.findChromePath();
+        const userDataDir = path.resolve(process.cwd(), '.chrome-session-profile');
+        this.browser = await puppeteer.launch({
+          executablePath: chromePath || undefined,
+          headless: false,
+          userDataDir,
+          defaultViewport: null,
+          args: [
+            '--remote-debugging-port=9222',
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-blink-features=AutomationControlled',
+          ],
+        });
+      }
 
       const pages = await this.browser.pages();
       for (const p of pages) {
@@ -105,6 +125,9 @@ export class BrowserClient {
 
     try {
       const elements = await this.activePage.evaluate(() => {
+        // Esbuild / tsx helper compatibility
+        (window as any).__name = (window as any).__name || ((fn: any) => fn);
+
         const results: Array<{
           id: number;
           tagName: string;

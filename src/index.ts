@@ -14,6 +14,15 @@ import { OperatorConsole } from './dashboard/OperatorConsole.js';
 
 dotenv.config();
 
+// Global crash resilience: prevent process termination on async blips
+process.on('uncaughtException', (err) => {
+  console.error('[Resilience] Uncaught Exception caught, continuing operation:', err.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Resilience] Unhandled Promise Rejection caught, continuing operation:', reason);
+});
+
 async function bootstrap() {
   console.log('================================================================');
   console.log('   AUTONOMOUS AGENTIC SOCIAL MEDIA OPERATOR (THREADS.NET)       ');

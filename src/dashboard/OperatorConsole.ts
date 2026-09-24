@@ -16,11 +16,22 @@ export class OperatorConsole {
   }
 
   public startInteractiveCli(): void {
-    this.rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      terminal: false,
-    });
+    // Only attach interactive readline if stdin is readable and not closed
+    if (process.stdin.isTTY || process.stdin.readable) {
+      try {
+        this.rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+          terminal: false,
+        });
+
+        this.rl.on('error', () => {
+          // Gracefully ignore stdin pipe errors in headless / daemon mode
+        });
+      } catch {
+        this.rl = null;
+      }
+    }
 
     console.log('\n======================================================');
     console.log('       ANTIGRAVITY AUTONOMOUS OPERATOR CONSOLE        ');
