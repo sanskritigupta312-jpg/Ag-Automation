@@ -8,7 +8,9 @@
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "launch-chrome": "tsx src/launcher/ChromeLauncher.ts",
-    "test:humanizer": "tsx test/humanizer.test.ts"
+    "test:humanizer": "tsx test/humanizer.test.ts",
+    "test:advanced": "tsx test/advanced_protocols.test.ts",
+    "test": "tsx test/humanizer.test.ts && tsx test/advanced_protocols.test.ts"
   },
   "bugs": {
     "url": "https://github.com/sanskritigupta312-jpg/Ag-Automation/issues"

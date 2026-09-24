@@ -1,7 +1,8 @@
 /**
  * CursorPhysics.ts
  * Implements organic, human-mimicking mouse movements via Cubic Bézier curves,
- * non-center dynamic bounding box selection, velocity easing, and micro-overshoots.
+ * non-center dynamic bounding box selection within a strict 20%-80% safe pad,
+ * natural sight-alignment pauses (350ms-1400ms), and micro-overshoots.
  */
 
 export interface Point {
@@ -35,20 +36,17 @@ export class CursorPhysics {
   }
 
   /**
-   * Dynamically picks a randomized inner point inside a bounding box.
-   * Strictly avoids static coordinates and exact center clicks.
-   * Uses a bounded Gaussian-like distribution biased away from extreme borders and center.
+   * Dynamically calculates a randomized inner point strictly within a safe 20%-80% inner pad.
+   * Strictly avoids static coordinates and exact center points.
    */
-  public calculateDynamicTargetPoint(box: BoundingBox, innerPaddingRatio: number = 0.2): Point {
-    const padX = Math.max(2, box.width * innerPaddingRatio);
-    const padY = Math.max(2, box.height * innerPaddingRatio);
+  public calculateDynamicTargetPoint(box: BoundingBox): Point {
+    // Safe 20% to 80% boundary
+    const minX = box.x + box.width * 0.2;
+    const maxX = box.x + box.width * 0.8;
+    const minY = box.y + box.height * 0.2;
+    const maxY = box.y + box.height * 0.8;
 
-    const minX = box.x + padX;
-    const maxX = box.x + box.width - padX;
-    const minY = box.y + padY;
-    const maxY = box.y + box.height - padY;
-
-    // Generate non-center distribution: blend two uniforms to approximate a natural triangular/normal cluster
+    // Blend two uniforms to generate natural Gaussian-like cluster
     const u1 = Math.random();
     const u2 = Math.random();
     const factorX = (u1 + u2) / 2;
@@ -60,20 +58,32 @@ export class CursorPhysics {
     let targetX = minX + factorX * (maxX - minX);
     let targetY = minY + factorY * (maxY - minY);
 
-    // Apply minor anti-center offset to avoid clicking dead center
+    // Apply minor anti-center offset to ensure it never hits exact dead center
     const centerX = box.x + box.width / 2;
     const centerY = box.y + box.height / 2;
-    if (Math.abs(targetX - centerX) < 1) {
-      targetX += (Math.random() > 0.5 ? 1 : -1) * (2 + Math.random() * 3);
+    if (Math.abs(targetX - centerX) < 1.5) {
+      targetX += (Math.random() > 0.5 ? 1 : -1) * (2.5 + Math.random() * 3);
     }
-    if (Math.abs(targetY - centerY) < 1) {
-      targetY += (Math.random() > 0.5 ? 1 : -1) * (2 + Math.random() * 3);
+    if (Math.abs(targetY - centerY) < 1.5) {
+      targetY += (Math.random() > 0.5 ? 1 : -1) * (2.5 + Math.random() * 3);
     }
+
+    // Keep within bounds
+    targetX = Math.max(minX, Math.min(maxX, targetX));
+    targetY = Math.max(minY, Math.min(maxY, targetY));
 
     return {
       x: Math.round(targetX * 100) / 100,
       y: Math.round(targetY * 100) / 100,
     };
+  }
+
+  /**
+   * Generates a natural human sight-alignment pause (350ms to 1400ms)
+   * prior to dispatching clicks.
+   */
+  public getSightAlignmentPause(): number {
+    return Math.floor(350 + Math.random() * 1050);
   }
 
   /**
@@ -84,11 +94,11 @@ export class CursorPhysics {
     const distance = Math.hypot(target.x - start.x, target.y - start.y);
     const baseSteps = Math.max(15, Math.min(80, Math.floor(distance / 12)));
     const steps = options.steps ?? baseSteps;
-    const curvature = options.perpendicularCurvature ?? (Math.random() * 0.4 - 0.2); // Natural human wrist curve
+    const curvature = options.perpendicularCurvature ?? (Math.random() * 0.4 - 0.2);
     const overshootProb = options.overshootProbability ?? 0.35;
     const tremor = options.tremorMagnitude ?? 0.6;
 
-    // Perpendicular vector for natural arc
+    // Perpendicular vector for natural human wrist arc
     const dx = target.x - start.x;
     const dy = target.y - start.y;
     const perpX = -dy * curvature;

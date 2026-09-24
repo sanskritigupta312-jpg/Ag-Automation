@@ -1,8 +1,8 @@
 /**
  * BrowserClient.ts
  * Manages Puppeteer connection via Chrome DevTools Protocol (CDP port 9222).
- * Handles visual screenshot capture, dynamic semantic DOM element extraction,
- * and raw CDP input event dispatching.
+ * Implements visual fallback, recursive Shadow DOM extraction,
+ * natural sight-alignment pauses (350ms-1400ms), and raw CDP input event dispatching.
  */
 
 import puppeteer, { Browser, Page, CDPSession } from 'puppeteer-core';
@@ -31,9 +31,6 @@ export class BrowserClient {
     this.browserUrl = browserUrl;
   }
 
-  /**
-   * Connects to an existing Chrome instance via CDP port 9222.
-   */
   public async connect(): Promise<boolean> {
     try {
       this.browser = await puppeteer.connect({
@@ -42,7 +39,6 @@ export class BrowserClient {
       });
 
       const pages = await this.browser.pages();
-      // Look for an existing threads.net tab
       for (const p of pages) {
         const url = p.url();
         if (url.includes('threads.net')) {
@@ -51,7 +47,6 @@ export class BrowserClient {
         }
       }
 
-      // If no threads tab found, pick the first page or open a new one
       if (!this.activePage) {
         if (pages.length > 0 && pages[0].url() === 'about:blank') {
           this.activePage = pages[0];
@@ -81,8 +76,12 @@ export class BrowserClient {
     return this.activePage;
   }
 
+  public getCdpSession(): CDPSession | null {
+    return this.cdpSession;
+  }
+
   /**
-   * Captures viewport screenshot as Base64 JPEG.
+   * Captures viewport screenshot as Base64 JPEG for visual processing.
    */
   public async captureScreenshot(): Promise<string> {
     if (!this.activePage) {
@@ -97,8 +96,9 @@ export class BrowserClient {
   }
 
   /**
-   * Dynamically inspects the DOM and extracts visible, semantic candidate elements.
-   * Completely avoids hardcoded CSS selectors or fixed regex.
+   * Extracts visible semantic interactive elements dynamically.
+   * Completely avoids dynamic hashed CSS classes (e.g. `_a9--`).
+   * Recursively traverses open Shadow DOM roots for full platform resilience.
    */
   public async extractSemanticElements(): Promise<SemanticElement[]> {
     if (!this.activePage) return [];
@@ -117,69 +117,88 @@ export class BrowserClient {
           boundingBox: { x: number; y: number; width: number; height: number };
         }> = [];
 
-        // Traverse visible elements in the current viewport
-        const allElements = document.querySelectorAll('*');
         let counter = 1;
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
 
-        allElements.forEach((el) => {
-          const rect = el.getBoundingClientRect();
+        // Recursive tree traversal including Shadow DOM roots
+        function collectNodes(root: Node | ShadowRoot) {
+          const children = root.childNodes;
+          for (let i = 0; i < children.length; i++) {
+            const node = children[i];
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const el = node as HTMLElement;
 
-          // Filter out invisible, off-screen, or zero-sized elements
-          if (
-            rect.width < 10 ||
-            rect.height < 10 ||
-            rect.bottom < 0 ||
-            rect.top > viewportHeight ||
-            rect.right < 0 ||
-            rect.left > viewportWidth
-          ) {
-            return;
+              // Inspect shadow root if attached
+              if (el.shadowRoot) {
+                collectNodes(el.shadowRoot);
+              }
+
+              const rect = el.getBoundingClientRect();
+
+              // Filter out off-screen, zero-sized, or hidden elements
+              if (
+                rect.width >= 10 &&
+                rect.height >= 10 &&
+                rect.bottom > 0 &&
+                rect.top < viewportHeight &&
+                rect.right > 0 &&
+                rect.left < viewportWidth
+              ) {
+                const style = window.getComputedStyle(el);
+                if (
+                  style.visibility !== 'hidden' &&
+                  style.display !== 'none' &&
+                  parseFloat(style.opacity) > 0
+                ) {
+                  const tagName = el.tagName.toLowerCase();
+                  const role = el.getAttribute('role');
+                  const ariaLabel = el.getAttribute('aria-label');
+                  const placeholder = el.getAttribute('placeholder');
+                  const isContentEditable = el.getAttribute('contenteditable') === 'true';
+                  const isInput = tagName === 'input' || tagName === 'textarea' || isContentEditable;
+                  const isButton = tagName === 'button' || role === 'button';
+                  const isLink = tagName === 'a' || role === 'link';
+                  const isClickable = isButton || isLink || style.cursor === 'pointer' || el.hasAttribute('onclick');
+
+                  const rawText = el.textContent ? el.textContent.replace(/\s+/g, ' ').trim() : '';
+                  const textSnippet = rawText.length > 120 ? rawText.substring(0, 120) + '...' : rawText;
+
+                  if (
+                    isInput ||
+                    isClickable ||
+                    ariaLabel ||
+                    (textSnippet.length > 0 && (role || tagName.startsWith('h') || tagName === 'p' || tagName === 'span'))
+                  ) {
+                    results.push({
+                      id: counter++,
+                      tagName,
+                      role,
+                      ariaLabel,
+                      placeholder,
+                      textSnippet,
+                      isEditable: isInput,
+                      isClickable,
+                      boundingBox: {
+                        x: Math.round(rect.left),
+                        y: Math.round(rect.top),
+                        width: Math.round(rect.width),
+                        height: Math.round(rect.height),
+                      },
+                    });
+                  }
+                }
+              }
+
+              // Recurse light DOM children
+              if (el.childNodes.length > 0) {
+                collectNodes(el);
+              }
+            }
           }
+        }
 
-          const style = window.getComputedStyle(el);
-          if (style.visibility === 'hidden' || style.display === 'none' || parseFloat(style.opacity) === 0) {
-            return;
-          }
-
-          const tagName = el.tagName.toLowerCase();
-          const role = el.getAttribute('role');
-          const ariaLabel = el.getAttribute('aria-label');
-          const placeholder = el.getAttribute('placeholder');
-          const isContentEditable = el.getAttribute('contenteditable') === 'true';
-          const isInput = tagName === 'input' || tagName === 'textarea' || isContentEditable;
-          const isButton = tagName === 'button' || role === 'button';
-          const isLink = tagName === 'a' || role === 'link';
-          const isClickable = isButton || isLink || style.cursor === 'pointer' || el.hasAttribute('onclick');
-
-          // Text content directly inside element (trimmed to 120 chars)
-          const rawText = el.textContent ? el.textContent.replace(/\s+/g, ' ').trim() : '';
-          const textSnippet = rawText.length > 120 ? rawText.substring(0, 120) + '...' : rawText;
-
-          // Retain elements that have semantic interaction value or meaningful text
-          if (isInput || isClickable || ariaLabel || (textSnippet.length > 0 && (role || tagName.startsWith('h') || tagName === 'p' || tagName === 'span'))) {
-            // Avoid duplicate parents when child has identical rect
-            results.push({
-              id: counter++,
-              tagName,
-              role,
-              ariaLabel,
-              placeholder,
-              textSnippet,
-              isEditable: isInput,
-              isClickable,
-              boundingBox: {
-                x: Math.round(rect.left),
-                y: Math.round(rect.top),
-                width: Math.round(rect.width),
-                height: Math.round(rect.height),
-              },
-            });
-          }
-        });
-
-        // Return up to 60 most relevant candidate nodes in viewport
+        collectNodes(document.body);
         return results.slice(0, 60);
       });
 
@@ -205,22 +224,23 @@ export class BrowserClient {
         x: pt.x,
         y: pt.y,
       });
-      // Micro interval between points (10ms - 22ms)
       await new Promise((r) => setTimeout(r, 12 + Math.floor(Math.random() * 10)));
     }
   }
 
   /**
-   * Dispatches a human-timed mouse click at target coordinates.
+   * Dispatches a human-timed mouse click at target coordinates with natural
+   * sight-alignment pause (350ms to 1400ms) prior to dispatching click.
    */
-  public async dispatchMouseClick(point: Point, preClickPauseMs: number = 80): Promise<void> {
+  public async dispatchMouseClick(point: Point, preClickSightPauseMs?: number): Promise<void> {
     if (!this.cdpSession) {
       if (!this.activePage) return;
       this.cdpSession = await this.activePage.createCDPSession();
     }
 
-    // Natural pre-click gaze alignment pause
-    await new Promise((r) => setTimeout(r, preClickPauseMs));
+    // Natural sight-alignment pause (350ms to 1400ms)
+    const pauseDuration = preClickSightPauseMs ?? Math.floor(350 + Math.random() * 1050);
+    await new Promise((r) => setTimeout(r, pauseDuration));
 
     // Mouse Down
     await this.cdpSession.send('Input.dispatchMouseEvent', {
@@ -231,7 +251,7 @@ export class BrowserClient {
       clickCount: 1,
     });
 
-    // Natural click hold duration (50ms - 110ms)
+    // Hold duration (50ms - 110ms)
     const holdDuration = 50 + Math.floor(Math.random() * 60);
     await new Promise((r) => setTimeout(r, holdDuration));
 
@@ -314,7 +334,9 @@ export class BrowserClient {
 
   public async disconnect(): Promise<void> {
     if (this.browser) {
-      await this.browser.disconnect();
+      try {
+        await this.browser.disconnect();
+      } catch {}
       this.browser = null;
       this.activePage = null;
       this.cdpSession = null;

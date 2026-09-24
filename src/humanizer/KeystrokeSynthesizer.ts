@@ -4,7 +4,7 @@
  * - Dynamic keystroke latency (45ms - 180ms)
  * - Mid-sentence thinking pauses
  * - Organic backspace typos and corrections (QWERTY neighbor matrix)
- * - AI stylistic marker suppression (em-dash, bullets, robotic phrases)
+ * - Strict AI stylistic marker suppression (em-dash, hyphens in prose, bullets, robotic phrases)
  * - Natural social media syntax formatting
  */
 
@@ -47,7 +47,7 @@ export class KeystrokeSynthesizer {
 
   /**
    * Sanitizes and adapts text to real-world casual social media syntax.
-   * Suppresses robotic AI stylistic markers: em-dashes (—), en-dashes (–),
+   * Suppresses robotic AI stylistic markers: em-dashes (—), hyphens in prose (-),
    * structural bullet points (*, -), rigid quotes, and canned robotic openings.
    */
   public sanitizeHumanSyntax(input: string): string {
@@ -55,11 +55,15 @@ export class KeystrokeSynthesizer {
 
     let text = input;
 
-    // Remove em-dashes and en-dashes
+    // Suppress em-dashes and en-dashes
     text = text.replace(/[\u2014\u2013]/g, ', ');
     text = text.replace(/\s*--\s*/g, ', ');
 
-    // Remove structural bullet lists or numbering at line starts
+    // Suppress isolated hyphens in regular prose (e.g. "word - word" -> "word, word")
+    // Keep hyphens in compound words like "real-time" if needed, but remove standalone hyphens
+    text = text.replace(/\s+-\s+/g, ', ');
+
+    // Suppress structural bullet lists or numbering at line starts
     text = text.replace(/^[\s*•\-–—]+\s*/gm, '');
     text = text.replace(/^\d+[\.)]\s*/gm, '');
 
@@ -82,12 +86,12 @@ export class KeystrokeSynthesizer {
     // Collapse multiple blank lines or redundant spaces
     text = text.replace(/\n{2,}/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();
 
-    // Natural social media casing: if text starts with very rigid Title Case or All Caps, relax it
+    // Natural social media casing: relax rigid first-letter capitalization
     if (/^[A-Z][a-z]/.test(text) && Math.random() < 0.35) {
       text = text.charAt(0).toLowerCase() + text.slice(1);
     }
 
-    // Trim trailing formal period if casual sentence
+    // Trim trailing formal period if single casual sentence
     if (text.endsWith('.') && !text.endsWith('..') && !text.includes('\n') && text.length < 120 && Math.random() < 0.5) {
       text = text.slice(0, -1);
     }
@@ -96,7 +100,7 @@ export class KeystrokeSynthesizer {
   }
 
   /**
-   * Deconstructs text into a humanized keystroke sequence containing:
+   * Deconstructs text into a humanized keystroke sequence:
    * - Variable typing speed (45ms to 180ms)
    * - Occasional natural typos and backspace corrections
    * - Mid-sentence thinking pauses
@@ -127,7 +131,7 @@ export class KeystrokeSynthesizer {
         actions.push({
           type: 'type',
           char: actualTypo,
-          delayMs: this.randomDelay(50, 160),
+          delayMs: this.randomDelay(45, 160),
         });
 
         // 2. Realization pause (120ms - 280ms)
@@ -149,7 +153,7 @@ export class KeystrokeSynthesizer {
         });
       }
 
-      // Normal keystroke
+      // Normal keystroke within 45ms - 180ms range
       actions.push({
         type: 'type',
         char: char,
@@ -178,11 +182,9 @@ export class KeystrokeSynthesizer {
    * Generates a random delay with a log-normal skew towards the lower-middle range.
    */
   private randomDelay(min: number, max: number): number {
-    // Box-Muller transform for normal distribution
     const u1 = Math.random();
     const u2 = Math.random();
     const normal = Math.sqrt(-2.0 * Math.log(u1 || 0.0001)) * Math.cos(2.0 * Math.PI * u2);
-    // Map normal (-2 to +2) into [min, max] range
     const normalized = Math.min(1, Math.max(0, (normal + 2.5) / 5));
     return Math.round(min + normalized * (max - min));
   }
