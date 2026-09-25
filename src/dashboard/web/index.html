@@ -3,10 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Antigravity — Threads Automation Dashboard</title>
-  <meta name="description" content="Manage your intelligent Threads social media automation powered by Google Antigravity's local Gemini AI." />
+  <title>Antigravity AI — Autopilot Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -26,21 +25,12 @@
         <div class="logo-mark">AG</div>
         <div class="logo-text">
           <span class="logo-name">Antigravity</span>
-          <span class="logo-sub">Threads Automation</span>
+          <span class="logo-sub">Autopilot Agent</span>
         </div>
       </div>
 
       <nav class="sidebar-nav">
-        <button class="nav-item active" data-view="setup" id="nav-setup">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
-          Setup Profile
-        </button>
-        <button class="nav-item" data-view="intent" id="nav-intent">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2Z"/></svg>
-          Intent Review
-          <span class="badge" id="intent-badge" style="display:none">1</span>
-        </button>
-        <button class="nav-item" data-view="monitor" id="nav-monitor">
+        <button class="nav-item active" data-view="monitor" id="nav-monitor">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
           Live Monitor
         </button>
@@ -48,18 +38,14 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
           Publish Post
         </button>
-        <button class="nav-item" data-view="stats" id="nav-stats">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-          Analytics
-        </button>
       </nav>
 
       <!-- Status Indicator -->
       <div class="sidebar-status" id="sidebar-status">
         <div class="status-dot idle" id="status-dot"></div>
         <div class="status-info">
-          <span class="status-label" id="status-label">Not Started</span>
-          <span class="status-mode" id="status-mode">—</span>
+          <span class="status-label" id="status-label">Ready</span>
+          <span class="status-mode" id="status-mode">Waiting for command</span>
         </div>
       </div>
     </aside>
@@ -68,293 +54,18 @@
     <main class="main-content" id="main-content">
 
       <!-- ═══════════════════════════════════ -->
-      <!-- VIEW: SETUP PROFILE                 -->
-      <!-- ═══════════════════════════════════ -->
-      <section class="view active" id="view-setup">
-        <div class="view-header">
-          <h1>Your Automation Profile</h1>
-          <p>Tell us about yourself so the AI can engage on your behalf authentically.</p>
-        </div>
-
-        <form class="profile-form" id="profile-form" novalidate>
-
-          <!-- Basic Info -->
-          <div class="form-section">
-            <h2 class="section-title">
-              <span class="section-icon">👤</span>
-              About You
-            </h2>
-            <div class="form-grid">
-              <div class="form-group">
-                <label for="field-name">Your Name</label>
-                <input type="text" id="field-name" name="name" placeholder="e.g. Sanskriti Gupta" required />
-              </div>
-              <div class="form-group">
-                <label for="field-profession">Your Profession / Role</label>
-                <input type="text" id="field-profession" name="profession" placeholder="e.g. Frontend Developer, UI Designer, Copywriter" required />
-              </div>
-            </div>
-            <div class="form-group full-width">
-              <label for="field-bio">About You (1-3 sentences)</label>
-              <textarea id="field-bio" name="bio" rows="3" placeholder="e.g. I'm a frontend developer with 3 years of experience specializing in React and modern UI. I'm actively looking for remote opportunities and collaborations in the tech space." required></textarea>
-            </div>
-          </div>
-
-          <!-- Platform -->
-          <div class="form-section">
-            <h2 class="section-title">
-              <span class="section-icon">📱</span>
-              Platform & Goals
-            </h2>
-            <div class="form-group">
-              <label>Social Platform</label>
-              <div class="platform-select">
-                <div class="platform-card selected" data-platform="THREADS">
-                  <div class="platform-icon">🧵</div>
-                  <div class="platform-name">Threads</div>
-                  <div class="platform-check">✓</div>
-                </div>
-                <div class="platform-card coming-soon" title="Coming soon">
-                  <div class="platform-icon">𝕏</div>
-                  <div class="platform-name">X / Twitter</div>
-                  <div class="platform-badge">Soon</div>
-                </div>
-                <div class="platform-card coming-soon" title="Coming soon">
-                  <div class="platform-icon">in</div>
-                  <div class="platform-name">LinkedIn</div>
-                  <div class="platform-badge">Soon</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="form-group full-width">
-              <label>Automation Goals <span class="label-hint">(select all that apply)</span></label>
-              <div class="goal-grid" id="goal-grid">
-                <label class="goal-chip" data-goal="FIND_RELEVANT_POSTS_AND_COMMENT">
-                  <input type="checkbox" name="goals" value="FIND_RELEVANT_POSTS_AND_COMMENT" />
-                  <span class="chip-icon">💬</span>
-                  <span class="chip-text">Find & Comment on Relevant Posts</span>
-                </label>
-                <label class="goal-chip" data-goal="FIND_JOB_HIRING_POSTS">
-                  <input type="checkbox" name="goals" value="FIND_JOB_HIRING_POSTS" />
-                  <span class="chip-icon">💼</span>
-                  <span class="chip-text">Find Job / Hiring Posts</span>
-                </label>
-                <label class="goal-chip" data-goal="REPLY_TO_COMMENT_REPLIES">
-                  <input type="checkbox" name="goals" value="REPLY_TO_COMMENT_REPLIES" />
-                  <span class="chip-icon">↩️</span>
-                  <span class="chip-text">Reply to Comment Replies</span>
-                </label>
-                <label class="goal-chip" data-goal="REPLY_TO_DMS">
-                  <input type="checkbox" name="goals" value="REPLY_TO_DMS" />
-                  <span class="chip-icon">✉️</span>
-                  <span class="chip-text">Reply to DMs</span>
-                </label>
-                <label class="goal-chip" data-goal="NETWORK_BUILDING">
-                  <input type="checkbox" name="goals" value="NETWORK_BUILDING" />
-                  <span class="chip-icon">🌐</span>
-                  <span class="chip-text">Network Building</span>
-                </label>
-                <label class="goal-chip" data-goal="FIND_COLLAB_OPPORTUNITIES">
-                  <input type="checkbox" name="goals" value="FIND_COLLAB_OPPORTUNITIES" />
-                  <span class="chip-icon">🤝</span>
-                  <span class="chip-text">Find Collaboration Opportunities</span>
-                </label>
-                <label class="goal-chip" data-goal="BRAND_AWARENESS">
-                  <input type="checkbox" name="goals" value="BRAND_AWARENESS" />
-                  <span class="chip-icon">📣</span>
-                  <span class="chip-text">Brand / Presence Awareness</span>
-                </label>
-                <label class="goal-chip" data-goal="CUSTOM">
-                  <input type="checkbox" name="goals" value="CUSTOM" />
-                  <span class="chip-icon">✨</span>
-                  <span class="chip-text">Custom Goal</span>
-                </label>
-              </div>
-            </div>
-
-            <div class="form-group full-width" id="custom-goal-group" style="display:none">
-              <label for="field-custom-goal">Describe Your Custom Goal</label>
-              <textarea id="field-custom-goal" name="customGoal" rows="2" placeholder="Describe exactly what you want the AI to do on your behalf..."></textarea>
-            </div>
-          </div>
-
-          <!-- Voice & Tone -->
-          <div class="form-section">
-            <h2 class="section-title">
-              <span class="section-icon">🎙️</span>
-              Your Voice & Style
-            </h2>
-            <div class="form-group full-width">
-              <label>Communication Tone</label>
-              <div class="tone-grid" id="tone-grid">
-                <label class="tone-chip" data-tone="casual_friendly">
-                  <input type="radio" name="toneStyle" value="casual_friendly" />
-                  <span>😊 Casual & Friendly</span>
-                </label>
-                <label class="tone-chip" data-tone="professional">
-                  <input type="radio" name="toneStyle" value="professional" />
-                  <span>💼 Professional</span>
-                </label>
-                <label class="tone-chip" data-tone="friendly_technical">
-                  <input type="radio" name="toneStyle" value="friendly_technical" />
-                  <span>🔧 Friendly Technical</span>
-                </label>
-                <label class="tone-chip" data-tone="witty_creative">
-                  <input type="radio" name="toneStyle" value="witty_creative" />
-                  <span>🎨 Witty & Creative</span>
-                </label>
-                <label class="tone-chip" data-tone="empathetic_supportive">
-                  <input type="radio" name="toneStyle" value="empathetic_supportive" />
-                  <span>💙 Empathetic</span>
-                </label>
-                <label class="tone-chip" data-tone="confident_assertive">
-                  <input type="radio" name="toneStyle" value="confident_assertive" />
-                  <span>🚀 Confident</span>
-                </label>
-              </div>
-            </div>
-
-            <div class="form-group full-width">
-              <label for="field-context">Context Keywords <span class="label-hint">(comma separated — these help the AI understand what's relevant to you)</span></label>
-              <input type="text" id="field-context" name="contextKeywords" placeholder="e.g. React, remote work, frontend, UI design, freelance, open source" />
-              <div class="tag-preview" id="context-tags"></div>
-            </div>
-
-            <div class="form-group full-width">
-              <label>Sample Comments <span class="label-hint">(write 2-3 examples in your own natural voice — the AI will match your style exactly)</span></label>
-              <div id="sample-comments-container">
-                <div class="sample-comment-row">
-                  <input type="text" class="sample-comment-input" placeholder="e.g. this is so well explained, exactly what I needed to see today" />
-                  <button type="button" class="btn-remove-sample" aria-label="Remove">✕</button>
-                </div>
-                <div class="sample-comment-row">
-                  <input type="text" class="sample-comment-input" placeholder="e.g. genuinely impressed by this approach, clean and practical" />
-                  <button type="button" class="btn-remove-sample" aria-label="Remove">✕</button>
-                </div>
-              </div>
-              <button type="button" class="btn-add-sample" id="btn-add-sample">+ Add Another Sample</button>
-            </div>
-          </div>
-
-          <!-- Schedule -->
-          <div class="form-section">
-            <h2 class="section-title">
-              <span class="section-icon">🕐</span>
-              Active Hours & Rate Limits
-            </h2>
-            <div class="form-grid">
-              <div class="form-group">
-                <label for="field-hours-start">Active From (hour)</label>
-                <div class="range-display">
-                  <input type="range" id="field-hours-start" name="activeHoursStart" min="0" max="23" value="9" />
-                  <span class="range-value" id="hours-start-val">9:00</span>
-                </div>
-              </div>
-              <div class="form-group">
-                <label for="field-hours-end">Active Until (hour)</label>
-                <div class="range-display">
-                  <input type="range" id="field-hours-end" name="activeHoursEnd" min="0" max="23" value="18" />
-                  <span class="range-value" id="hours-end-val">18:00</span>
-                </div>
-              </div>
-              <div class="form-group">
-                <label for="field-max-comments">Max Comments / Hour</label>
-                <div class="range-display">
-                  <input type="range" id="field-max-comments" name="maxCommentsPerHour" min="3" max="15" value="8" />
-                  <span class="range-value" id="max-comments-val">8</span>
-                </div>
-              </div>
-              <div class="form-group">
-                <label for="field-max-dms">Max DM Replies / Hour</label>
-                <div class="range-display">
-                  <input type="range" id="field-max-dms" name="maxDmsPerHour" min="1" max="10" value="4" />
-                  <span class="range-value" id="max-dms-val">4</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="form-actions">
-            <button type="submit" class="btn-primary" id="btn-save-profile">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
-              Save Profile & Generate Plan
-            </button>
-            <p class="form-note">Your profile is saved locally. The AI will use it to craft personalized, humanized interactions.</p>
-          </div>
-
-        </form>
-      </section>
-
-      <!-- ═══════════════════════════════════ -->
-      <!-- VIEW: INTENT REVIEW                 -->
-      <!-- ═══════════════════════════════════ -->
-      <section class="view" id="view-intent">
-        <div class="view-header">
-          <h1>Session Intent Review</h1>
-          <p>Review what the AI plans to do, then approve to start.</p>
-        </div>
-
-        <div class="intent-container" id="intent-container">
-          <div class="intent-empty" id="intent-empty">
-            <div class="empty-icon">📋</div>
-            <h3>No Intent Generated Yet</h3>
-            <p>Complete your profile setup first, then come back here to review and approve your automation plan.</p>
-            <button class="btn-secondary" onclick="switchView('setup')">← Go to Setup</button>
-          </div>
-
-          <div class="intent-card" id="intent-card" style="display:none">
-            <div class="intent-header">
-              <div class="intent-avatar" id="intent-avatar">AG</div>
-              <div class="intent-meta">
-                <h3>Antigravity Agent</h3>
-                <span class="intent-time" id="intent-time">Just now</span>
-              </div>
-            </div>
-
-            <div class="intent-body" id="intent-body">
-              <!-- Filled dynamically -->
-            </div>
-
-            <div class="intent-actions-list" id="intent-actions-list">
-              <!-- Filled dynamically -->
-            </div>
-
-            <div class="intent-notes-group">
-              <label for="intent-notes">Any modifications? (optional)</label>
-              <textarea id="intent-notes" rows="2" placeholder="e.g. Focus more on job posts today, or skip DMs for now..."></textarea>
-            </div>
-
-            <div class="intent-actions">
-              <button class="btn-approve" id="btn-approve">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
-                Approve & Start
-              </button>
-              <button class="btn-modify" id="btn-modify">
-                ✏️ Modify Profile
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ═══════════════════════════════════ -->
       <!-- VIEW: LIVE MONITOR                  -->
       <!-- ═══════════════════════════════════ -->
-      <section class="view" id="view-monitor">
+      <section class="view active" id="view-monitor">
         <div class="view-header-row">
           <div>
-            <h1>Live Monitor</h1>
-            <p>Real-time view of your automation in progress.</p>
+            <h1 class="gradient-text">Live Autopilot Monitor</h1>
+            <p>Real-time view of Antigravity AI engaging on your behalf.</p>
           </div>
           <div class="monitor-controls">
-            <button class="btn-control pause" id="btn-pause" onclick="sendControl('pause')">
-              <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-              Pause
-            </button>
-            <button class="btn-control resume" id="btn-resume" onclick="sendControl('resume')" style="display:none">
-              <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
-              Resume
+            <button class="btn-control start glow-btn" id="btn-start" onclick="sendControl('start')">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><polygon points="5,3 19,12 5,21"/></svg>
+              Start Automation
             </button>
             <button class="btn-control stop" id="btn-stop" onclick="sendControl('stop')">
               <svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
@@ -363,114 +74,36 @@
           </div>
         </div>
 
-        <!-- Security Alert Banner -->
-        <div class="security-alert" id="security-alert" style="display:none">
-          <div class="alert-icon">⚠️</div>
-          <div class="alert-content">
-            <strong>Security Challenge Detected!</strong>
-            <p id="security-alert-msg">Please open the browser, complete the verification manually, then click Resume.</p>
+        <!-- Activity History -->
+        <div class="glass-panel activity-history-panel">
+          <div class="panel-header">
+            <div class="header-left">
+              <span class="panel-icon">🚀</span>
+              <h2 class="panel-title">Completed Actions</h2>
+              <span class="badge success-badge">Live Feed</span>
+            </div>
+            <span id="activity-count" class="text-muted">0 actions</span>
           </div>
-          <button class="btn-resume-alert" onclick="sendControl('resume')">Resume After Fix</button>
-        </div>
-
-        <!-- Mode Switcher -->
-        <div class="mode-switcher">
-          <span class="mode-label">Mode:</span>
-          <button class="mode-btn active" data-mode="FEED" onclick="switchMode('FEED')">Feed</button>
-          <button class="mode-btn" data-mode="DM" onclick="switchMode('DM')">DMs</button>
-          <button class="mode-btn" data-mode="NOTIFICATIONS" onclick="switchMode('NOTIFICATIONS')">Notifications</button>
-        </div>
-
-        <!-- Stats Row -->
-        <div class="stats-row" id="stats-row">
-          <div class="stat-card" id="stat-cycles">
-            <div class="stat-number" id="val-cycles">0</div>
-            <div class="stat-label">Cycles</div>
-          </div>
-          <div class="stat-card" id="stat-comments">
-            <div class="stat-number" id="val-comments">0</div>
-            <div class="stat-label">Comments</div>
-          </div>
-          <div class="stat-card" id="stat-dms">
-            <div class="stat-number" id="val-dms">0</div>
-            <div class="stat-label">DMs Replied</div>
-          </div>
-          <div class="stat-card" id="stat-scrolls">
-            <div class="stat-number" id="val-scrolls">0</div>
-            <div class="stat-label">Scrolls</div>
-          </div>
-          <div class="stat-card" id="stat-uptime">
-            <div class="stat-number" id="val-uptime">0m</div>
-            <div class="stat-label">Uptime</div>
+          <div class="activity-stream" id="activity-stream">
+            <div class="empty-state">
+              <div class="empty-icon">🤖</div>
+              <p>No actions performed yet.</p>
+              <span>Click "Start Automation" to let Antigravity manage your Threads.</span>
+            </div>
           </div>
         </div>
 
         <!-- Live Log -->
-        <div class="live-log-panel">
-          <div class="log-header">
-            <span class="log-title">Live Agent Log</span>
+        <div class="glass-panel live-log-panel">
+          <div class="panel-header">
+            <div class="header-left">
+              <span class="panel-icon">⚡</span>
+              <h2 class="panel-title">Agent Thinking Log</h2>
+            </div>
             <div class="log-pulse" id="log-pulse"></div>
-            <button class="btn-clear-log" onclick="clearLog()">Clear</button>
           </div>
           <div class="log-stream" id="log-stream">
-            <div class="log-entry muted">Waiting for automation to start...</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ═══════════════════════════════════ -->
-      <!-- VIEW: ANALYTICS                     -->
-      <!-- ═══════════════════════════════════ -->
-      <section class="view" id="view-stats">
-        <div class="view-header">
-          <h1>Analytics</h1>
-          <p>Session statistics and performance overview.</p>
-        </div>
-
-        <div class="analytics-grid">
-          <div class="analytics-card">
-            <h3>Hourly Activity</h3>
-            <div class="analytics-stat big" id="an-comments-hour">0</div>
-            <div class="analytics-label">Comments this hour</div>
-            <div class="analytics-stat medium" id="an-dms-hour">0</div>
-            <div class="analytics-label">DMs this hour</div>
-          </div>
-          <div class="analytics-card">
-            <h3>Session Totals</h3>
-            <div class="analytics-table" id="analytics-table">
-              <div class="analytics-row">
-                <span>Total Comments</span><span id="an-total-comments">0</span>
-              </div>
-              <div class="analytics-row">
-                <span>Total DMs</span><span id="an-total-dms">0</span>
-              </div>
-              <div class="analytics-row">
-                <span>Total Scrolls</span><span id="an-total-scrolls">0</span>
-              </div>
-              <div class="analytics-row">
-                <span>Total Interactions</span><span id="an-total-interactions">0</span>
-              </div>
-              <div class="analytics-row">
-                <span>Session Uptime</span><span id="an-uptime">0 min</span>
-              </div>
-            </div>
-          </div>
-          <div class="analytics-card">
-            <h3>Status</h3>
-            <div class="rate-limit-bar">
-              <div class="rate-label">Comments/hour capacity</div>
-              <div class="rate-bar"><div class="rate-fill" id="rate-fill-comments" style="width:0%"></div></div>
-              <div class="rate-percent" id="rate-pct-comments">0%</div>
-            </div>
-            <div class="rate-limit-bar">
-              <div class="rate-label">DMs/hour capacity</div>
-              <div class="rate-bar"><div class="rate-fill dms" id="rate-fill-dms" style="width:0%"></div></div>
-              <div class="rate-percent" id="rate-pct-dms">0%</div>
-            </div>
-            <div class="cooling-status" id="cooling-status">
-              <span class="cooling-dot active"></span>
-              <span>Cooldown active</span>
-            </div>
+            <div class="log-entry muted">System initialized. Awaiting commands...</div>
           </div>
         </div>
       </section>
@@ -480,66 +113,20 @@
       <!-- ═══════════════════════════════════ -->
       <section class="view" id="view-post">
         <div class="view-header">
-          <h1>Publish to Threads</h1>
-          <p>Compose and publish a post directly to your Threads profile, or trigger quick value comments on active threads.</p>
+          <h1 class="gradient-text">Manual Override</h1>
+          <p>Compose and publish a post directly to your profile, bypassing the autopilot.</p>
         </div>
 
-        <div class="post-composer-card">
-          <!-- Quick Templates -->
-          <div class="template-selector">
-            <span class="template-label">✨ Quick Templates (Based on Resume):</span>
-            <div class="template-chips">
-              <button type="button" class="chip-btn" id="tpl-remote-job">💼 Remote Job Seeker Pitch</button>
-              <button type="button" class="chip-btn" id="tpl-react-showcase">🚀 React & Portfolio Showcase</button>
-              <button type="button" class="chip-btn" id="tpl-mern-insight">💡 MERN & Full-Stack Tech Tip</button>
-            </div>
-          </div>
-
-          <!-- Textarea -->
+        <div class="glass-panel post-composer-card">
           <div class="composer-field">
-            <textarea id="post-text-input" rows="5" placeholder="What's happening? Share a project update, tech thought, or remote job inquiry..."></textarea>
+            <textarea id="post-text-input" rows="5" placeholder="Share a project update, tech thought, or remote job inquiry..."></textarea>
             <div class="composer-footer">
               <span id="post-char-count">0 / 500</span>
-              <div class="composer-actions">
-                <button type="button" class="btn btn-secondary" id="btn-quick-comment">💬 Post as Comment Instead</button>
-                <button type="button" class="btn btn-primary" id="btn-publish-post">
-                  <span id="post-btn-spinner" class="spinner" style="display:none"></span>
-                  🚀 Publish to Threads
-                </button>
-              </div>
+              <button type="button" class="btn-primary glow-btn" id="btn-publish-post">
+                🚀 Publish Post
+              </button>
             </div>
           </div>
-
-          <!-- Live Preview -->
-          <div class="post-preview-container">
-            <h4>Live Preview on Threads</h4>
-            <div class="threads-preview-card">
-              <div class="threads-preview-header">
-                <div class="preview-avatar">SK</div>
-                <div class="preview-user">
-                  <span class="preview-name" id="preview-user-name">Sanskriti Kumari</span>
-                  <span class="preview-handle">@threads_user</span>
-                </div>
-              </div>
-              <div class="preview-content" id="preview-post-text">
-                Your post will appear here...
-              </div>
-              <div class="preview-link-card" id="preview-link-card">
-                <div class="link-meta">
-                  <span class="link-domain">🌐 my-portfolio-psi-liard-97.vercel.app</span>
-                  <span class="link-title">Personal Portfolio Website — Sanskriti Kumari</span>
-                </div>
-              </div>
-              <div class="preview-footer-actions">
-                <span>♡ Like</span>
-                <span>💬 Reply</span>
-                <span>↻ Repost</span>
-                <span>✈ Share</span>
-              </div>
-            </div>
-          </div>
-
-          <div id="post-toast" class="post-toast" style="display:none"></div>
         </div>
       </section>
 
