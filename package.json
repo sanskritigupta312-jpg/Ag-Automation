@@ -1,0 +1,34 @@
+{
+  "name": "ag-automation",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "launch-chrome": "tsx src/launcher/ChromeLauncher.ts",
+    "dashboard": "tsx src/index.ts",
+    "test:humanizer": "tsx test/humanizer.test.ts",
+    "test:advanced": "tsx test/advanced_protocols.test.ts",
+    "test:semantic": "tsx test/semantic_reasoner.test.ts",
+    "test": "tsx test/humanizer.test.ts && tsx test/advanced_protocols.test.ts && tsx test/semantic_reasoner.test.ts"
+  },
+  "bugs": {
+    "url": "https://github.com/sanskritigupta312-jpg/Ag-Automation/issues"
+  },
+  "homepage": "https://github.com/sanskritigupta312-jpg/Ag-Automation#readme",
+  "dependencies": {
+    "@types/express": "^5.0.6",
+    "dotenv": "^18.0.3",
+    "express": "^5.2.1",
+    "puppeteer-core": "^25.12.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
