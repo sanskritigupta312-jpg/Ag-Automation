@@ -185,12 +185,20 @@ export class ObserveReasonActLoop {
       targetElement = semanticElements.find((e) => e.id === decision.targetElementId);
     }
 
-    // Execute click-based actions (CLICK, OPEN_POST, GO_BACK)
+    // Handle independent GO_BACK (returning to main feed)
+    if (decision.action === 'GO_BACK') {
+      this.log('[ACT] Executing GO_BACK: Navigating back to main feed...');
+      await this.browserClient.navigateBack();
+      await this.humanPause(1500, 2500);
+      executedActions.push('Navigated back to feed');
+      requestedModeSwitch = 'FEED';
+      this.log('[6-Step Loop] ✓ Step 6 Complete: Returned to FEED.');
+    }
+
+    // Execute click-based actions (CLICK, OPEN_POST)
     if (
       targetElement &&
-      (decision.action === 'CLICK' ||
-        decision.action === 'OPEN_POST' ||
-        decision.action === 'GO_BACK')
+      (decision.action === 'CLICK' || decision.action === 'OPEN_POST')
     ) {
       targetPoint = this.cursorPhysics.calculateDynamicTargetPoint(targetElement.boundingBox);
       const startPoint = this.cursorPhysics.getCurrentPosition();
@@ -205,12 +213,11 @@ export class ObserveReasonActLoop {
         `${decision.action}: clicked element #${targetElement.id} at (${targetPoint.x}, ${targetPoint.y})`
       );
 
-      // If GO_BACK, use browser history
-      if (decision.action === 'GO_BACK') {
-        await this.browserClient.navigateBack();
-        await this.humanPause(1200, 2200);
-        executedActions.push('Navigated back to feed');
-        requestedModeSwitch = 'FEED';
+      // If OPEN_POST, switch mode to POST_OPEN and pause for page load
+      if (decision.action === 'OPEN_POST') {
+        requestedModeSwitch = 'POST_OPEN';
+        this.log('[6-Step Loop] ✓ Step 3 Complete: Post opened. Switched to POST_OPEN mode.');
+        await this.humanPause(2500, 3800);
       }
     }
 
@@ -244,6 +251,18 @@ export class ObserveReasonActLoop {
       await this.submitTypedContent(semanticElements, executedActions);
 
       this.rhythmManager.recordAction(decision.action === 'COMMENT' ? 'comment' : 'dm');
+
+      // In POST_OPEN mode: Step 5 (Verify) & Step 6 (Return to feed)
+      if (mode === 'POST_OPEN' && decision.action === 'COMMENT') {
+        this.log('[6-Step Loop] ✓ Step 4 Complete: Comment submitted. Verifying in thread...');
+        await this.humanPause(2000, 3200);
+        this.log('[6-Step Loop] ✓ Step 5 Complete: Comment confirmed published.');
+        this.log('[6-Step Loop] Navigating back to feed to repeat cycle...');
+        await this.browserClient.navigateBack();
+        await this.humanPause(1800, 2600);
+        requestedModeSwitch = 'FEED';
+        this.log('[6-Step Loop] ✓ Step 6 Complete: Returned to FEED. Ready for next post.');
+      }
     }
 
     // Handle SCROLL

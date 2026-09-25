@@ -23,6 +23,7 @@ import { ChromeLauncher } from '../launcher/ChromeLauncher.js';
 import { ObserveReasonActLoop, OperationalMode, CycleResult } from './ObserveReasonActLoop.js';
 import { InboundMonitor } from './InboundMonitor.js';
 import { AgentMonitor } from '../monitor/AgentMonitor.js';
+import { SemanticPostReasoner } from '../engine/SemanticPostReasoner.js';
 import { CustomerProfile, AgentTelemetry, OperationIntent } from '../types/CustomerProfile.js';
 import { IntentInterviewer } from '../intent/IntentInterviewer.js';
 
@@ -489,11 +490,19 @@ export class ThreadsOperator {
 
       await this.sleep(1500);
 
-      const commentText =
-        customComment ||
-        (this.customerProfile?.sampleComments && this.customerProfile.sampleComments.length > 0
-          ? this.customerProfile.sampleComments[0]
-          : `Hey! I'm a React.js developer with hands-on internship experience at CodeWebx Technologies. Would love to apply for this remote role! Portfolio: https://my-portfolio-psi-liard-97.vercel.app`);
+      let commentText = customComment;
+      if (!commentText) {
+        if (this.customerProfile?.sampleComments && this.customerProfile.sampleComments.length > 0) {
+          commentText = this.customerProfile.sampleComments[0];
+        } else {
+          const portfolio = SemanticPostReasoner.extractPortfolio(this.customerProfile);
+          const profession = this.customerProfile?.profession || 'Developer';
+          const keyExp = SemanticPostReasoner.extractKeyExperience(this.customerProfile);
+          const expSnippet = keyExp ? ` ${keyExp}.` : '';
+          const portSnippet = portfolio ? ` Portfolio: ${portfolio}` : '';
+          commentText = `Hey! As a ${profession}, I'm passionate about building clean and performant web applications.${expSnippet}${portSnippet} Looking forward to connecting!`;
+        }
+      }
 
       const keystrokes = this.keystrokeSynthesizer.synthesizeKeystrokes(commentText);
       await this.browserClient.dispatchKeystrokeActions(keystrokes);

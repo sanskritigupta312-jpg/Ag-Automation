@@ -17,7 +17,7 @@ export class TrendInjector {
     startup: ['#startuplife', '#solopreneur', '#founders', '#saas', '#indiehackers'],
     finance: ['#personalfinance', '#investing', '#economy', '#markets', '#wealth'],
     lifestyle: ['#lifestyle', '#mindset', '#productivity', '#dailyroutine', '#wellness'],
-    ai: ['#generativeai', '#llm', '#machinelearning', '#futureofwork', '#tech'],
+    ai: ['#ai', '#generativeai', '#llm', '#tech', '#aitools'],
     general: ['#threads', '#community', '#conversation', '#thoughts', '#goodvibes'],
   };
 

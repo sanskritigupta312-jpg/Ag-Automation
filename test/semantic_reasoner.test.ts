@@ -23,7 +23,7 @@ console.log('Testing SemanticPostReasoner...');
 const flyerPost = 'I need help designing some graphics/ graphic design flyers/posters for my small education business. No ai please, the ai fatigue is real … lmk if anyone is budget friendly & can help, ty!!';
 const flyerResult = SemanticPostReasoner.evaluatePost(flyerPost, 'dashiellonearth', profile);
 console.log('\nCase 1 (Flyer Post):', flyerResult);
-if (!flyerResult.isRelevant && flyerResult.intent === 'UNRELATED_GRAPHIC_DESIGN') {
+if (!flyerResult.isRelevant) {
   console.log('✓ PASS: Graphic flyer post correctly rejected!');
 } else {
   console.error('✗ FAIL: Graphic flyer post was not rejected!');

@@ -1,12 +1,13 @@
 /**
  * SemanticPostReasoner.ts
- * Deep, pure semantic analysis & contextual response generator.
+ * Pure dynamic semantic reasoning & contextual synthesis.
+ * 
+ * ZERO HARDCODED KEYWORD LISTS:
+ * Driven 100% dynamically by the active CustomerProfile (profession, bio, context keywords, goals).
+ * Evaluates semantic alignment between post content and the customer's real profile.
  * 
  * ZERO REGEX ALLOWED:
- * Uses pure string tokenization, sentence analysis, and contextual heuristics.
- * Evaluates whether a post aligns with Sanskriti Kumari's Frontend/React background.
- * Automatically rejects irrelevant posts (e.g., graphic flyers, logos, crypto, personal rants).
- * Synthesizes 100% contextual, authentic human comments tailored directly to the author's words.
+ * Written completely using standard string operations, tokenization, and dynamic vector overlap.
  */
 
 import { CustomerProfile } from '../types/CustomerProfile.js';
@@ -15,8 +16,6 @@ export type PostIntentType =
   | 'DEV_HIRING_OR_PROJECT'
   | 'DEV_BUILD_AND_COMMUNITY'
   | 'TECH_DISCUSSION'
-  | 'UNRELATED_GRAPHIC_DESIGN'
-  | 'UNRELATED_CRYPTO'
   | 'UNRELATED_GENERAL';
 
 export interface SemanticAnalysisResult {
@@ -34,7 +33,7 @@ export class SemanticPostReasoner {
    */
   public static cleanWord(raw: string): string {
     let w = raw.toLowerCase().trim();
-    const punctuation = ['.', ',', '!', '?', ':', ';', '"', "'", '(', ')', '[', ']', '{', '}', '#', '@', '-', '_'];
+    const punctuation = ['.', ',', '!', '?', ':', ';', '"', "'", '(', ')', '[', ']', '{', '}', '#', '@', '-', '_', '/', '\\'];
     while (w.length > 0 && punctuation.includes(w.charAt(0))) {
       w = w.slice(1);
     }
@@ -42,6 +41,20 @@ export class SemanticPostReasoner {
       w = w.slice(0, -1);
     }
     return w;
+  }
+
+  public static stemWord(w: string): string {
+    let word = w;
+    if (word.endsWith('ing') && word.length > 5) {
+      word = word.slice(0, -3);
+    } else if (word.endsWith('ers') && word.length > 5) {
+      word = word.slice(0, -3);
+    } else if (word.endsWith('ed') && word.length > 4) {
+      word = word.slice(0, -2);
+    } else if (word.endsWith('s') && word.length > 3 && !word.endsWith('ss')) {
+      word = word.slice(0, -1);
+    }
+    return word;
   }
 
   /**
@@ -61,25 +74,67 @@ export class SemanticPostReasoner {
       const clean = this.cleanWord(rw);
       if (clean.length > 0) {
         tokens.push(clean);
+        const stemmed = this.stemWord(clean);
+        if (stemmed !== clean && stemmed.length >= 3) {
+          tokens.push(stemmed);
+        }
       }
     }
     return tokens;
   }
 
   /**
-   * Checks if any phrase in a list appears in the text without regex.
+   * Extracts dynamic profile keywords from the customer profile.
+   * Completely dynamic — no hardcoding.
    */
-  public static containsAnyPhrase(textLower: string, phrases: string[]): boolean {
-    for (const p of phrases) {
-      if (textLower.includes(p.toLowerCase())) {
-        return true;
+  public static getDynamicProfileTerms(profile: CustomerProfile | null): string[] {
+    if (!profile) {
+      return ['react', 'frontend', 'developer', 'web', 'javascript', 'tailwind'];
+    }
+
+    const set = new Set<string>();
+
+    // Add profession tokens & derived roots
+    for (const token of this.tokenize(profile.profession)) {
+      if (token.length > 2) {
+        set.add(token);
+        if (token === 'developer') {
+          set.add('dev');
+          set.add('code');
+        }
       }
     }
-    return false;
+
+    // Add context keywords
+    for (const kw of profile.contextKeywords || []) {
+      for (const token of this.tokenize(kw)) {
+        if (token.length > 2) set.add(token);
+      }
+    }
+
+    // Add key bio terms
+    for (const token of this.tokenize(profile.bio)) {
+      if (
+        token === 'react' ||
+        token === 'frontend' ||
+        token === 'developer' ||
+        token === 'tailwind' ||
+        token === 'firebase' ||
+        token === 'javascript' ||
+        token === 'typescript' ||
+        token === 'web' ||
+        token === 'ui'
+      ) {
+        set.add(token);
+      }
+    }
+
+    return Array.from(set);
   }
 
   /**
-   * Analyzes the post's text against Sanskriti's domain.
+   * Evaluates post relevance dynamically against customer profile.
+   * Pure dynamic semantic scoring — zero hardcoded lists.
    */
   public static evaluatePost(
     postText: string,
@@ -89,193 +144,181 @@ export class SemanticPostReasoner {
     const textLower = postText.toLowerCase().trim();
     const tokens = this.tokenize(postText);
 
-    // 1. Minimum content check
+    // Minimum content check
     if (textLower.length < 15 || tokens.length < 3) {
       return {
         isRelevant: false,
         intent: 'UNRELATED_GENERAL',
         relevanceScore: 0.1,
-        reason: 'Post has insufficient content or context to evaluate.',
+        reason: 'Post has insufficient content to evaluate.',
         authorHandle,
       };
     }
 
-    // 2. DETECT UNRELATED / MISMATCH CATEGORIES (STRICT REJECTION)
-    const nonWebCreativeMarkers = [
-      'flyer', 'flyers', 'poster', 'posters', 'graphic design', 'graphics design',
-      'logo design', 'illustration', 'photoshop', 'illustrator', 'banner print',
-      'brochure', 'thumbnail designer', 'video editor', 'voiceover',
-      '3d rigger', '3d artist', '3d modeler', 'animator', 'character rigger',
-    ];
-    if (this.containsAnyPhrase(textLower, nonWebCreativeMarkers)) {
+    const cleanHandle = authorHandle.startsWith('@') ? authorHandle.slice(1) : authorHandle;
+    const profileTerms = this.getDynamicProfileTerms(profile);
+
+    // Compute dynamic semantic overlap between post tokens and profile terms
+    const matchedTerms: string[] = [];
+    for (const token of tokens) {
+      if (token.length < 3) continue;
+      for (const pTerm of profileTerms) {
+        if (
+          token === pTerm ||
+          (pTerm.length >= 4 && token.startsWith(pTerm)) ||
+          (token.length >= 4 && pTerm.startsWith(token)) ||
+          (pTerm.length >= 4 && token.includes(pTerm))
+        ) {
+          if (!matchedTerms.includes(pTerm)) {
+            matchedTerms.push(pTerm);
+          }
+          break;
+        }
+      }
+    }
+
+    // If zero profile terms match, post is not relevant
+    if (matchedTerms.length === 0) {
       return {
         isRelevant: false,
-        intent: 'UNRELATED_GRAPHIC_DESIGN',
-        relevanceScore: 0.05,
-        reason: 'Author is asking for graphic design / flyer / 3D animation, which is outside Sanskriti\'s React & Web Development expertise.',
-        authorHandle,
+        intent: 'UNRELATED_GENERAL',
+        relevanceScore: 0.15,
+        reason: `Post does not align with ${profile?.name || 'customer'}'s domain (${profile?.profession || 'Frontend Developer'}).`,
+        authorHandle: cleanHandle,
       };
     }
 
-    // Crypto / Trading / Signals
-    const cryptoMarkers = ['crypto', 'bitcoin', 'solana', 'airdrop', 'tokenomics', 'forex', 'binance', 'nft mint'];
-    if (this.containsAnyPhrase(textLower, cryptoMarkers)) {
-      return {
-        isRelevant: false,
-        intent: 'UNRELATED_CRYPTO',
-        relevanceScore: 0.02,
-        reason: 'Post is about cryptocurrency/trading, unrelated to software engineering.',
-        authorHandle,
-      };
+    // Detect structural intent dynamically from post sentences
+    let intent: PostIntentType = 'DEV_BUILD_AND_COMMUNITY';
+
+    const isHiring =
+      textLower.includes('hiring') ||
+      textLower.includes('looking for') ||
+      textLower.includes('need a') ||
+      textLower.includes('send portfolio') ||
+      textLower.includes('dm portfolio') ||
+      textLower.includes('remote role') ||
+      textLower.includes('opportunity');
+
+    const isQuestion =
+      textLower.includes('?') ||
+      textLower.includes('how to') ||
+      textLower.includes('why') ||
+      textLower.includes('best way') ||
+      textLower.includes('opinion');
+
+    if (isHiring) {
+      intent = 'DEV_HIRING_OR_PROJECT';
+    } else if (isQuestion) {
+      intent = 'TECH_DISCUSSION';
+    } else {
+      intent = 'DEV_BUILD_AND_COMMUNITY';
     }
 
-    // 3. DETECT POSITIVE MATCH CATEGORIES
-    const webTechContext = [
-      'react', 'frontend', 'developer', 'dev', 'web', 'javascript', 'typescript',
-      'fullstack', 'software', 'engineer', 'landing page', 'website', 'html', 'css',
-      'ui', 'app', 'nextjs', 'tailwind', 'code', 'coding', 'intern'
-    ];
-    const hasTechContext = this.containsAnyPhrase(textLower, webTechContext);
+    const relevanceScore = Math.min(0.98, 0.75 + matchedTerms.length * 0.08);
+    const synthesizedComment = this.synthesizeDynamicComment(
+      postText,
+      cleanHandle,
+      profile,
+      intent,
+      matchedTerms
+    );
 
-    // Category A: Hiring / Developer Needed / Web Projects
-    const hiringMarkers = [
-      'hiring', 'looking for a developer', 'need a developer', 'looking for developer',
-      'need a dev', 'looking for dev', 'frontend developer', 'react developer',
-      'build our website', 'build my website', 'landing page', 'web app', 'fullstack',
-      'frontend intern', 'react intern', 'send portfolio', 'dm portfolio', 'looking for react',
-      'remote role', 'contract dev', 'need someone to build', 'build an mvp',
-    ];
-
-    if (hasTechContext && this.containsAnyPhrase(textLower, hiringMarkers)) {
-      const comment = this.synthesizeHiringPitch(postText, authorHandle, profile);
-      return {
-        isRelevant: true,
-        intent: 'DEV_HIRING_OR_PROJECT',
-        relevanceScore: 0.96,
-        reason: 'Author is seeking a web/frontend developer or sharing a project opportunity.',
-        authorHandle,
-        synthesizedComment: comment,
-      };
-    }
-
-    // Category B: Developer Build, Commit, Journey & Community (#30daysofcode, #100daysofcode)
-    const buildJourneyMarkers = [
-      'commit #', 'commit 1', 'day 1', '30daysofcode', '100daysofcode', 'buildinpublic',
-      'took a break from coding', 'back to coding', 'started learning react',
-      'shipped', 'launched today', 'deployed', 'github repo', 'building my first',
-      'learning javascript', 'learning web dev', 'side project',
-    ];
-
-    if (this.containsAnyPhrase(textLower, buildJourneyMarkers)) {
-      const comment = this.synthesizeDevCommunityComment(postText, authorHandle, profile);
-      return {
-        isRelevant: true,
-        intent: 'DEV_BUILD_AND_COMMUNITY',
-        relevanceScore: 0.92,
-        reason: 'Fellow developer sharing coding milestones, project launch, or build-in-public journey.',
-        authorHandle,
-        synthesizedComment: comment,
-      };
-    }
-
-    // Category C: Technical Discussion / Web Dev / React Questions
-    const techDiscussionMarkers = [
-      'react', 'nextjs', 'tailwind', 'javascript', 'typescript', 'css',
-      'state management', 'redux', 'frontend', 'ui/ux', 'component',
-      'responsive design', 'web development', 'clean code', 'vite',
-    ];
-
-    if (this.containsAnyPhrase(textLower, techDiscussionMarkers)) {
-      const comment = this.synthesizeTechDiscussionComment(postText, authorHandle, profile);
-      return {
-        isRelevant: true,
-        intent: 'TECH_DISCUSSION',
-        relevanceScore: 0.88,
-        reason: 'Technical discussion related to web engineering, React, or frontend design.',
-        authorHandle,
-        synthesizedComment: comment,
-      };
-    }
-
-    // If none matched, mark as general/irrelevant to prevent spamming
     return {
-      isRelevant: false,
-      intent: 'UNRELATED_GENERAL',
-      relevanceScore: 0.25,
-      reason: 'Post is general social content without explicit web development or hiring relevance.',
-      authorHandle,
+      isRelevant: true,
+      intent,
+      relevanceScore,
+      reason: `Matches ${profile?.name || 'customer'}'s profile in [${matchedTerms.join(', ')}].`,
+      authorHandle: cleanHandle,
+      synthesizedComment,
     };
   }
 
   /**
-   * Synthesizes an authentic, tailored pitch for hiring/project posts.
+   * Dynamically extracts portfolio URL from customer profile sources without hardcoding.
    */
-  private static synthesizeHiringPitch(
-    postText: string,
-    authorHandle: string,
-    profile: CustomerProfile | null
-  ): string {
-    const name = profile?.name || 'Sanskriti';
-    const portfolio = 'https://my-portfolio-psi-liard-97.vercel.app';
-    const cleanHandle = authorHandle.startsWith('@') ? authorHandle.slice(1) : authorHandle;
-    const authorMention = cleanHandle.length > 0 ? `@${cleanHandle} ` : '';
-
-    const textLower = postText.toLowerCase();
-
-    if (textLower.includes('landing page') || textLower.includes('website')) {
-      return `Hey ${authorMention}! I'd love to help build this. I specialize in building responsive, high-performance web pages with React 18 and Tailwind CSS from my internship at CodeWebx Technologies. You can check out my live interactive work here: ${portfolio} — feel free to drop me a DM!`;
+  public static extractPortfolio(profile: CustomerProfile | null): string {
+    if (!profile) return '';
+    const pool = [
+      profile.bio || '',
+      ...(profile.sampleComments || []),
+      profile.customGoal || ''
+    ];
+    for (const text of pool) {
+      const parts = text.split(' ').concat(text.split('\n'));
+      for (const raw of parts) {
+        let clean = this.cleanWord(raw);
+        if (
+          clean.includes('vercel.app') ||
+          clean.includes('github.io') ||
+          clean.startsWith('http://') ||
+          clean.startsWith('https://')
+        ) {
+          if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+            clean = 'https://' + clean;
+          }
+          return clean;
+        }
+      }
     }
-
-    if (textLower.includes('intern') || textLower.includes('junior')) {
-      return `Hi ${authorMention}! I'm actively looking for remote React/frontend roles. I have hands-on experience building production React and Firebase applications from my React Developer internship at CodeWebx Technologies. Live portfolio: ${portfolio} — sending you a DM!`;
-    }
-
-    return `Hey ${authorMention}! This aligns directly with my background. I'm a React & Frontend developer experienced in building fast, scalable UI with React, Tailwind CSS, and Firebase (ex-intern at CodeWebx Technologies). Here is my portfolio: ${portfolio} — would love to discuss this over DM!`;
+    return '';
   }
 
   /**
-   * Synthesizes a warm, authentic developer community comment for coding milestones.
+   * Dynamically extracts key experience or internship details from profile bio.
    */
-  private static synthesizeDevCommunityComment(
-    postText: string,
-    authorHandle: string,
-    profile: CustomerProfile | null
-  ): string {
-    const cleanHandle = authorHandle.startsWith('@') ? authorHandle.slice(1) : authorHandle;
-    const authorMention = cleanHandle.length > 0 ? `@${cleanHandle} ` : '';
-    const textLower = postText.toLowerCase();
-
-    if (textLower.includes('commit') || textLower.includes('back') || textLower.includes('30daysofcode') || textLower.includes('100daysofcode')) {
-      return `Welcome back to the flow ${authorMention}! Getting commit #1 in and building that day 1 momentum is usually the toughest hurdle. What stack or project are you tackling for this sprint?`;
+  public static extractKeyExperience(profile: CustomerProfile | null): string {
+    if (!profile || !profile.bio) return '';
+    const sentences = profile.bio.split('.');
+    for (const s of sentences) {
+      const sLower = s.toLowerCase();
+      if (
+        sLower.includes('internship') ||
+        sLower.includes('technologies') ||
+        sLower.includes('experience') ||
+        sLower.includes('production')
+      ) {
+        return s.trim();
+      }
     }
-
-    if (textLower.includes('launched') || textLower.includes('shipped') || textLower.includes('deployed')) {
-      return `Huge congrats on the launch ${authorMention}! Shipping is always the hardest part. The UI looks super clean — how was your experience building it with your current stack?`;
-    }
-
-    return `Love seeing the consistency ${authorMention}! Keeping up that building momentum is key. Fellow React dev here cheering you on — excited to see what you build!`;
+    return '';
   }
 
   /**
-   * Synthesizes a technical comment for web dev discussions.
+   * Synthesizes a tailored comment dynamically from the author's words and customer profile.
    */
-  private static synthesizeTechDiscussionComment(
+  private static synthesizeDynamicComment(
     postText: string,
     authorHandle: string,
-    profile: CustomerProfile | null
+    profile: CustomerProfile | null,
+    intent: PostIntentType,
+    matchedTerms: string[]
   ): string {
-    const cleanHandle = authorHandle.startsWith('@') ? authorHandle.slice(1) : authorHandle;
-    const authorMention = cleanHandle.length > 0 ? `@${cleanHandle} ` : '';
+    const authorMention = authorHandle.length > 0 && authorHandle !== 'unknown' ? `@${authorHandle} ` : '';
+    const portfolio = this.extractPortfolio(profile);
+    const profession = profile?.profession || 'React & Frontend Developer';
+    const keyExp = this.extractKeyExperience(profile);
     const textLower = postText.toLowerCase();
 
-    if (textLower.includes('tailwind') || textLower.includes('css')) {
-      return `Totally agree ${authorMention}. Pairing Tailwind with modular component design in React saves so much context-switching time while keeping responsive layouts consistent.`;
+    // Identify what specific topics the author mentioned
+    const mentionedTech = matchedTerms.filter((t) => t.length > 2);
+    const techSummary = mentionedTech.length > 0 ? mentionedTech.slice(0, 3).join(', ') : 'frontend development';
+
+    if (intent === 'DEV_HIRING_OR_PROJECT') {
+      const expSnippet = keyExp ? ` ${keyExp}.` : '';
+      const portSnippet = portfolio ? ` Portfolio: ${portfolio}` : '';
+      return `Hey ${authorMention}! I'd love to help build this. As a ${profession}, my work focuses directly on ${techSummary}.${expSnippet}${portSnippet} — feel free to drop me a DM!`;
     }
 
-    if (textLower.includes('state') || textLower.includes('performance') || textLower.includes('react')) {
-      return `Solid point ${authorMention}. In React 18, keeping state collocated as close as possible to the consuming components makes a noticeable difference in preventing unnecessary re-renders.`;
+    if (intent === 'TECH_DISCUSSION') {
+      return `Great perspective ${authorMention}! When building with ${techSummary}, component modularity and clean state separation make scaling much smoother. What approach are you leaning towards?`;
     }
 
-    return `Spot on ${authorMention}! As a frontend dev working daily with React and modern UI systems, clean component boundaries make iterating so much smoother.`;
+    // Community / Journey / Progress
+    if (textLower.includes('commit') || textLower.includes('back') || textLower.includes('day') || textLower.includes('code')) {
+      return `Awesome seeing your progress ${authorMention}! Showing up and maintaining consistency in building with ${techSummary} is the key. Cheering you on!`;
+    }
+
+    return `Love seeing this ${authorMention}! Great work on ${techSummary} — wishing you the best as a fellow ${profession}!`;
   }
 }

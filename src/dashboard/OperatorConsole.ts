@@ -54,7 +54,7 @@ export class OperatorConsole {
     console.log('══════════════════════════════════════════════════\n');
 
     this.rl.on('line', async (line: string) => {
-      const parts = line.trim().split(/\s+/);
+      const parts = line.trim().split(' ').filter((p) => p.length > 0);
       const cmd = parts[0]?.toLowerCase();
 
       switch (cmd) {

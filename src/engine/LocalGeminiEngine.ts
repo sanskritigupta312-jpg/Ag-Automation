@@ -41,19 +41,22 @@ export interface AgenticDecision {
 export interface EngineConfig {
   hostUrl?: string;
   modelName?: string;
+  apiKey?: string;
   temperature?: number;
 }
 
 export class LocalGeminiEngine {
-  private hostUrl: string;
+  private hostUrl?: string;
+  private apiKey?: string;
   private modelName: string;
   private temperature: number;
   private customerProfile: CustomerProfile | null = null;
 
   constructor(config: EngineConfig = {}) {
-    this.hostUrl = config.hostUrl || process.env.GEMINI_LOCAL_HOST || 'http://localhost:11434';
-    this.modelName = config.modelName || process.env.GEMINI_LOCAL_MODEL || 'gemini-flash';
-    this.temperature = config.temperature ?? 0.75;
+    this.apiKey = config.apiKey || process.env.GEMINI_API_KEY;
+    this.hostUrl = config.hostUrl || process.env.GEMINI_LOCAL_HOST;
+    this.modelName = config.modelName || process.env.GEMINI_LOCAL_MODEL || 'gemini-1.5-flash';
+    this.temperature = config.temperature ?? 0.7;
   }
 
   /**
@@ -384,65 +387,68 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
     const timeoutId = setTimeout(() => controller.abort(), 20000);
 
     try {
-      // Try Ollama-style API first (/api/generate)
-      if (screenshotBase64) {
-        const res = await fetch(`${this.hostUrl}/api/generate`, {
+      // 1. Google Gemini REST API (if GEMINI_API_KEY is configured)
+      if (this.apiKey) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelName}:generateContent?key=${this.apiKey}`;
+        const parts: any[] = [{ text: `${systemPrompt}\n\n${userPrompt}` }];
+        if (screenshotBase64) {
+          parts.push({
+            inline_data: {
+              mime_type: 'image/jpeg',
+              data: screenshotBase64,
+            },
+          });
+        }
+
+        const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: this.modelName,
-            system: systemPrompt,
-            prompt: userPrompt,
-            images: [screenshotBase64],
-            stream: false,
-            format: 'json',
-            options: { temperature: this.temperature },
+            contents: [{ parts }],
+            generationConfig: {
+              temperature: this.temperature,
+              responseMimeType: 'application/json',
+            },
           }),
           signal: controller.signal,
         });
 
         if (res.ok) {
-          const data = (await res.json()) as { response: string };
-          return this.parseDecision(data.response);
+          const data = (await res.json()) as any;
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) {
+            return this.parseDecision(text);
+          }
         }
       }
 
-      // Fallback: OpenAI / LocalAI format (/v1/chat/completions)
-      const resChat = await fetch(`${this.hostUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.modelName,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            {
-              role: 'user',
-              content: screenshotBase64
-                ? [
-                    { type: 'text', text: userPrompt },
-                    {
-                      type: 'image_url',
-                      image_url: { url: `data:image/jpeg;base64,${screenshotBase64}` },
-                    },
-                  ]
-                : userPrompt,
-            },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: this.temperature,
-        }),
-        signal: controller.signal,
-      });
+      // 2. Local Antigravity / Gemini server endpoint (if hostUrl configured)
+      if (this.hostUrl) {
+        const resChat = await fetch(`${this.hostUrl}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: this.modelName,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            response_format: { type: 'json_object' },
+            temperature: this.temperature,
+          }),
+          signal: controller.signal,
+        });
 
-      if (resChat.ok) {
-        const data = (await resChat.json()) as {
-          choices: Array<{ message: { content: string } }>;
-        };
-        const content = data.choices[0]?.message?.content || '{}';
-        return this.parseDecision(content);
+        if (resChat.ok) {
+          const data = (await resChat.json()) as {
+            choices: Array<{ message: { content: string } }>;
+          };
+          const content = data.choices[0]?.message?.content || '{}';
+          return this.parseDecision(content);
+        }
       }
 
-      throw new Error(`All endpoints failed`);
+      throw new Error('No external Gemini host or API key configured');
     } finally {
       clearTimeout(timeoutId);
     }
@@ -468,6 +474,13 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
   /**
    * Resilient cognitive fallback — dynamically reasoning with full CustomerProfile context.
    * Zero regex, deep semantic post evaluation and authentic context-aware synthesis.
+   * Implements strict 6-step loop:
+   * 1. SCROLL
+   * 2. FILTER_AND_FIND
+   * 3. OPEN_POST
+   * 4. COMMENT
+   * 5. VERIFY
+   * 6. GO_BACK
    */
   private fallbackCognitiveReasoning(
     elements: SemanticElement[],
@@ -480,7 +493,25 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
     // 1. Extract visible post context and author handle from visible feed column
     let authorHandle = '';
     const textPieces: string[] = [];
-    const navWords = ['home', 'search', 'activity', 'profile', 'threads', 'notifications', 'settings', 'more', 'post', 'create', 'reply', 'login', 'signup', 'for you', 'following'];
+    const navWords = [
+      'home',
+      'search',
+      'activity',
+      'profile',
+      'threads',
+      'notifications',
+      'settings',
+      'more',
+      'post',
+      'create',
+      'reply',
+      'login',
+      'signup',
+      'for you',
+      'following',
+    ];
+
+    let primaryPostElement: SemanticElement | undefined;
 
     for (const e of elements) {
       // Exclude left navigation sidebar (x < 70) and extreme header/footer
@@ -492,7 +523,11 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
       if (
         !authorHandle &&
         (t.startsWith('@') ||
-          (e.role === 'link' && t.length > 2 && t.length < 25 && !t.includes(' ') && !navWords.includes(t.toLowerCase())))
+          (e.role === 'link' &&
+            t.length > 2 &&
+            t.length < 25 &&
+            !t.includes(' ') &&
+            !navWords.includes(t.toLowerCase())))
       ) {
         authorHandle = t.startsWith('@') ? t.slice(1) : t;
       }
@@ -500,7 +535,6 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
       // Collect post text candidates (ignore button labels & navigation)
       const isNavOrBtn =
         e.role === 'button' ||
-        e.isClickable ||
         navWords.includes(t.toLowerCase()) ||
         t.startsWith('Reply') ||
         t.startsWith('Like') ||
@@ -514,6 +548,9 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
 
       if (!isNavOrBtn && t.length > 12) {
         textPieces.push(t);
+        if (!primaryPostElement && (e.isClickable || e.role === 'link' || e.boundingBox.width > 100)) {
+          primaryPostElement = e;
+        }
       }
     }
 
@@ -524,61 +561,104 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
     const openComposer = elements.find(
       (e) =>
         (e.isEditable || e.role === 'textbox') &&
-        (
-          (e.placeholder && (e.placeholder.toLowerCase().includes('reply') || e.placeholder.toLowerCase().includes('comment'))) ||
-          (e.ariaLabel && (e.ariaLabel.toLowerCase().includes('reply') || e.ariaLabel.toLowerCase().includes('comment'))) ||
-          (e.boundingBox.y > 180 && !e.placeholder?.toLowerCase().includes('search') && !e.placeholder?.toLowerCase().includes("what's new"))
-        )
+        ((e.placeholder &&
+          (e.placeholder.toLowerCase().includes('reply') ||
+            e.placeholder.toLowerCase().includes('comment') ||
+            e.placeholder.toLowerCase().includes('say more'))) ||
+          (e.ariaLabel &&
+            (e.ariaLabel.toLowerCase().includes('reply') ||
+              e.ariaLabel.toLowerCase().includes('comment'))) ||
+          (e.boundingBox.y > 140 &&
+            !e.placeholder?.toLowerCase().includes('search') &&
+            !e.placeholder?.toLowerCase().includes("what's new")))
     );
 
-    if (openComposer) {
-      // If the post is confirmed relevant, synthesize authentic contextual comment
-      if (evalResult.isRelevant && evalResult.synthesizedComment) {
+    // ── POST_OPEN MODE (Inside opened post view) ──
+    if (mode === 'POST_OPEN') {
+      if (openComposer) {
         return {
-          thought: `[Contextual Reasoner] Post by @${authorHandle || 'author'} is relevant: ${evalResult.reason}. Synthesizing authentic response addressing their specific context.`,
+          thought: `[Step 4/6: Comment] Tailoring comment for @${authorHandle || 'author'} on behalf of ${profileName}.`,
           action: 'COMMENT',
           targetElementId: openComposer.id,
           targetDescription: openComposer.placeholder || 'Reply textbox',
           synthesizedText: evalResult.synthesizedComment,
-          recommendedDelayMs: 3800,
+          recommendedDelayMs: 3500,
           confidence: evalResult.relevanceScore,
           postRelevanceReason: evalResult.reason,
         };
       }
 
-      // If the post is irrelevant (e.g. graphic flyers/posters), cancel/close composer
-      const cancelButton = elements.find(
+      // Look for Reply button to open composer in the thread view
+      const replyButton = elements.find(
         (e) =>
           e.isClickable &&
-          (e.textSnippet === 'Cancel' || e.textSnippet === 'Close' || e.ariaLabel === 'Close')
+          e.boundingBox.y > 60 &&
+          e.boundingBox.y < 750 &&
+          ((e.textSnippet && e.textSnippet.startsWith('Reply')) ||
+            (e.ariaLabel && e.ariaLabel.toLowerCase().includes('reply')) ||
+            (e.placeholder && e.placeholder.toLowerCase().includes('reply')))
       );
 
-      if (cancelButton) {
+      if (replyButton) {
         return {
-          thought: `[Semantic Filter] Post is irrelevant: ${evalResult.reason}. Closing composer without commenting.`,
+          thought: `[Step 4/6: Open Composer] Clicking Reply on @${authorHandle || 'author'}'s post.`,
           action: 'CLICK',
-          targetElementId: cancelButton.id,
-          targetDescription: 'Cancel composer button',
-          recommendedDelayMs: 1800,
+          targetElementId: replyButton.id,
+          targetDescription: `Reply button (${replyButton.textSnippet || 'Reply'})`,
+          postRelevanceReason: evalResult.reason,
+          recommendedDelayMs: 2000,
           confidence: 0.95,
         };
       }
 
-      // If cannot cancel or general feed, scroll down to explore developer posts
+      // If finished commenting or no reply button found, return to feed (Step 6)
       return {
-        thought: `[Semantic Filter] Skipping irrelevant post (${evalResult.reason}). Scrolling feed to discover developer posts.`,
-        action: 'SCROLL',
-        scrollDeltaY: 360 + Math.floor(Math.random() * 220),
+        thought: `[Step 6/6: Go Back] Comment cycle complete on this thread. Navigating back to feed.`,
+        action: 'GO_BACK',
         recommendedDelayMs: 2500,
-        confidence: 0.9,
+        confidence: 0.95,
       };
     }
 
-    if (mode === 'FEED' || mode === 'POST_OPEN') {
-      // If post is NOT relevant, scroll past it!
+    // ── FEED MODE ──
+    if (mode === 'FEED') {
+      // If composer is open on feed, comment if relevant or close if irrelevant
+      if (openComposer) {
+        if (evalResult.isRelevant && evalResult.synthesizedComment) {
+          return {
+            thought: `[Step 4/6: Comment] Relevant post found on feed. Posting comment on behalf of ${profileName}.`,
+            action: 'COMMENT',
+            targetElementId: openComposer.id,
+            targetDescription: openComposer.placeholder || 'Reply textbox',
+            synthesizedText: evalResult.synthesizedComment,
+            recommendedDelayMs: 3800,
+            confidence: evalResult.relevanceScore,
+            postRelevanceReason: evalResult.reason,
+          };
+        }
+
+        const cancelButton = elements.find(
+          (e) =>
+            e.isClickable &&
+            (e.textSnippet === 'Cancel' || e.textSnippet === 'Close' || e.ariaLabel === 'Close')
+        );
+
+        if (cancelButton) {
+          return {
+            thought: `[Semantic Filter] Post is irrelevant: ${evalResult.reason}. Closing composer.`,
+            action: 'CLICK',
+            targetElementId: cancelButton.id,
+            targetDescription: 'Cancel composer button',
+            recommendedDelayMs: 1800,
+            confidence: 0.95,
+          };
+        }
+      }
+
+      // Step 2: Check relevance
       if (!evalResult.isRelevant) {
         return {
-          thought: `[Semantic Filter] Skipping post by @${authorHandle || 'author'} (${evalResult.reason}). Searching for frontend/React/web posts.`,
+          thought: `[Step 1/6: Scroll Feed] Skipping post by @${authorHandle || 'author'} (${evalResult.reason}). Scrolling to find relevant posts.`,
           action: 'SCROLL',
           scrollDeltaY: 350 + Math.floor(Math.random() * 200),
           recommendedDelayMs: 2800,
@@ -586,7 +666,30 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
         };
       }
 
-      // Post IS relevant: look for Reply button to engage
+      // Post IS relevant -> Step 3: OPEN_POST!
+      const postClickTarget = primaryPostElement || elements.find(
+        (e) =>
+          e.isClickable &&
+          e.boundingBox.y > 80 &&
+          e.boundingBox.y < 650 &&
+          e.boundingBox.x > 70 &&
+          e.boundingBox.x < 650 &&
+          !navWords.includes((e.textSnippet || '').toLowerCase())
+      );
+
+      if (postClickTarget) {
+        return {
+          thought: `[Step 2/6: Filter & Find] Found relevant post by @${authorHandle || 'author'} (${evalResult.reason}). [Step 3/6] Opening post into thread view.`,
+          action: 'OPEN_POST',
+          targetElementId: postClickTarget.id,
+          targetDescription: `Post container for @${authorHandle || 'author'}`,
+          confidence: evalResult.relevanceScore,
+          postRelevanceReason: evalResult.reason,
+          recommendedDelayMs: 2500,
+        };
+      }
+
+      // Fallback: look for reply button if post container wasn't clickable
       const replyButton = elements.find(
         (e) =>
           e.isClickable &&
@@ -598,7 +701,7 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
 
       if (replyButton) {
         return {
-          thought: `[Semantic Match] Found relevant post by @${authorHandle} (${evalResult.reason}). Clicking Reply button.`,
+          thought: `[Step 3/6: Open Reply] Relevant post by @${authorHandle} (${evalResult.reason}). Opening reply composer.`,
           action: 'CLICK',
           targetElementId: replyButton.id,
           targetDescription: `Reply button (${replyButton.textSnippet})`,
@@ -608,9 +711,8 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
         };
       }
 
-      // If reply button not visible, scroll down slightly
       return {
-        thought: `[Semantic Match] Post is relevant (${evalResult.reason}). Scrolling to position Reply button in viewport.`,
+        thought: `[Step 1/6: Scroll] Relevant post found but controls not in view. Positioning viewport.`,
         action: 'SCROLL',
         scrollDeltaY: 250 + Math.floor(Math.random() * 150),
         recommendedDelayMs: 2400,
@@ -618,16 +720,24 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
       };
     }
 
+    // ── DM / NOTIFICATIONS MODE ──
     if (mode === 'DM' || mode === 'NOTIFICATIONS') {
       const dmInput = elements.find((e) => e.isEditable);
       if (dmInput) {
+        const portfolio = SemanticPostReasoner.extractPortfolio(p);
+        const profession = p?.profession || 'React & Frontend Developer';
+        const keyExp = SemanticPostReasoner.extractKeyExperience(p);
+        const expPart = keyExp ? ` ${keyExp}.` : '';
+        const portPart = portfolio ? ` Portfolio: ${portfolio}` : '';
+        const synthText = `Hey! Thanks for connecting. As a ${profession}, my focus is on responsive web applications and clean frontend architectures.${expPart}${portPart} — would love to discuss remote opportunities!`;
+
         return {
-          thought: `Inbound message detected. Responding as ${profileName} offering portfolio and remote availability.`,
+          thought: `Inbound message detected. Responding dynamically as ${profileName}.`,
           action: 'DM_REPLY',
           targetElementId: dmInput.id,
           targetDescription: 'DM input field',
-          synthesizedText: `Hey! Thanks for connecting. I'm a React developer with internship experience in React 18, Tailwind, and Firebase. You can check out my work here: https://my-portfolio-psi-liard-97.vercel.app — would love to discuss remote frontend opportunities!`,
-          recommendedDelayMs: 4500,
+          synthesizedText: synthText,
+          recommendedDelayMs: 4000,
           confidence: 0.88,
         };
       }
@@ -641,3 +751,4 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
     };
   }
 }
+

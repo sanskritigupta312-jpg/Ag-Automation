@@ -104,8 +104,25 @@ async function bootstrap() {
     try {
       const profile = JSON.parse(fs.readFileSync(profilePath, 'utf-8')) as CustomerProfile;
       operator.loadCustomerProfile(profile);
-      operator.approveIntent('Auto-approved saved profile');
-      console.log(`[Bootstrap] ✓ Saved profile loaded & approved: ${profile.name} (${profile.profession})`);
+
+      console.log('\n╔═══════════════════════════════════════════════════════════════╗');
+      console.log('║   SELECT OPERATION / APPROVE SESSION INTENT                  ║');
+      console.log(`║   Customer: ${profile.name.padEnd(49)} ║`);
+      console.log(`║   Role:     ${profile.profession.slice(0, 49).padEnd(49)} ║`);
+      console.log('║                                                               ║');
+      console.log('║   Autonomous 6-Step Operation Plan:                           ║');
+      console.log('║   1. Scroll Feed to discover relevant posts                   ║');
+      console.log('║   2. Filter & Find React/remote dev opportunities             ║');
+      console.log('║   3. Open post into dedicated thread view                     ║');
+      console.log('║   4. Post tailored, humanized comment on your behalf          ║');
+      console.log('║   5. Verify comment is published                              ║');
+      console.log('║   6. Go back to feed and repeat                               ║');
+      console.log('║                                                               ║');
+      console.log(`║   Web Dashboard Active: http://localhost:${dashPort.toString().padEnd(25)} ║`);
+      console.log('╚═══════════════════════════════════════════════════════════════╝\n');
+
+      operator.approveIntent('Approved operational session for ' + profile.name);
+      console.log(`[Bootstrap] ✓ Session intent ready and active for ${profile.name}.\n`);
     } catch (err) {
       console.warn('[Bootstrap] Could not load saved profile:', (err as Error).message);
     }
@@ -129,7 +146,7 @@ async function bootstrap() {
   });
 
   // ── Step 9: Start autonomous loop ──
-  console.log('[Bootstrap] ✓ Starting autonomous operational loop...\n');
+  console.log('[Bootstrap] 🚀 Starting autonomous 6-step loop...\n');
   await operator.start();
 }
 

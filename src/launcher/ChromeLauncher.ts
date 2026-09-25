@@ -73,12 +73,17 @@ export class ChromeLauncher {
       'https://www.threads.com',
     ];
 
-    const child: ChildProcess = spawn(chromePath, args, {
-      detached: true,
-      stdio: 'ignore',
-    });
-
-    child.unref();
+    if (process.platform === 'win32') {
+      const { exec } = await import('child_process');
+      const startCmd = `cmd.exe /c start "" "${chromePath}" ${args.join(' ')}`;
+      exec(startCmd);
+    } else {
+      const child: ChildProcess = spawn(chromePath, args, {
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.unref();
+    }
 
     // Poll until port 9222 responds (up to 15 seconds)
     const startTime = Date.now();
