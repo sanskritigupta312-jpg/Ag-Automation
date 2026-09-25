@@ -408,6 +408,8 @@ document.getElementById('profile-form')?.addEventListener('submit', async (e) =>
   const contextKeywords = contextRaw.split(',').map(t => t.trim()).filter(Boolean);
 
   const profile = {
+    geminiKey:          form.querySelector('#field-gemini-key')?.value?.trim() || '',
+    openaiKey:          form.querySelector('#field-openai-key')?.value?.trim() || '',
     name:               form.querySelector('#field-name')?.value?.trim() || '',
     profession:         form.querySelector('#field-profession')?.value?.trim() || '',
     bio:                form.querySelector('#field-bio')?.value?.trim() || '',
@@ -423,6 +425,10 @@ document.getElementById('profile-form')?.addEventListener('submit', async (e) =>
     maxDmsPerHour:      parseInt(document.getElementById('field-max-dms')?.value || '4'),
   };
 
+  if (!profile.geminiKey) {
+    addLogEntry('Please provide a Google Gemini API Key.', 'warn');
+    return;
+  }
   if (!profile.name || !profile.profession || !profile.bio) {
     addLogEntry('Please fill in your name, profession, and bio.', 'warn');
     return;

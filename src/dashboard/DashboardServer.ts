@@ -56,7 +56,14 @@ export class DashboardServer {
     // API: Save customer profile
     this.app.post('/api/profile', (req: Request, res: Response) => {
       try {
-        const profileData = req.body as Omit<CustomerProfile, 'id' | 'createdAt' | 'updatedAt'>;
+        const { geminiKey, openaiKey, ...profileData } = req.body as any;
+        
+        // Save API Keys to .env
+        const envContent = `GEMINI_API_KEY=${geminiKey || ''}\nOPENAI_API_KEY=${openaiKey || ''}\n`;
+        fs.writeFileSync(path.join(process.cwd(), '.env'), envContent);
+        process.env.GEMINI_API_KEY = geminiKey;
+        if (openaiKey) process.env.OPENAI_API_KEY = openaiKey;
+
         const profile: CustomerProfile = {
           ...profileData,
           id: `profile_${Date.now()}`,

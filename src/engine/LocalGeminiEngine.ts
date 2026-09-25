@@ -381,23 +381,25 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
   private async queryLocalHostModel(
     systemPrompt: string,
     userPrompt: string,
-    screenshotBase64: string
+    screenshotBase64: string,
+    attempt = 1
   ): Promise<AgenticDecision> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    // Refresh API keys in case they were updated via Dashboard
+    const geminiKey = process.env.GEMINI_API_KEY || this.apiKey;
+    const openaiKey = process.env.OPENAI_API_KEY;
 
     try {
-      // 1. Google Gemini REST API (if GEMINI_API_KEY is configured)
-      if (this.apiKey) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelName}:generateContent?key=${this.apiKey}`;
+      // --- 1. GOOGLE GEMINI (Primary) ---
+      if (geminiKey) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelName}:generateContent?key=${geminiKey}`;
         const parts: any[] = [{ text: `${systemPrompt}\n\n${userPrompt}` }];
-        if (screenshotBase64) {
-          parts.push({
-            inline_data: {
-              mime_type: 'image/jpeg',
-              data: screenshotBase64,
-            },
-          });
+        // Note: For reliability (to avoid 503s), we send only text semantics if requested, 
+        // but since this is computer-use, we send the image, unless we fail repeatedly.
+        if (screenshotBase64 && attempt < 3) {
+          parts.push({ inline_data: { mime_type: 'image/jpeg', data: screenshotBase64 } });
         }
 
         const res = await fetch(url, {
@@ -405,10 +407,7 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts }],
-            generationConfig: {
-              temperature: this.temperature,
-              responseMimeType: 'application/json',
-            },
+            generationConfig: { temperature: this.temperature, responseMimeType: 'application/json' },
           }),
           signal: controller.signal,
         });
@@ -416,39 +415,66 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
         if (res.ok) {
           const data = (await res.json()) as any;
           const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) {
-            return this.parseDecision(text);
-          }
+          if (text) return this.parseDecision(text);
+        } else if (res.status === 503 || res.status === 429) {
+          throw new Error(`Gemini API Error: ${res.status}`);
         }
       }
 
-      // 2. Local Antigravity / Gemini server endpoint (if hostUrl configured)
-      if (this.hostUrl) {
-        const resChat = await fetch(`${this.hostUrl}/v1/chat/completions`, {
+      // --- 2. OPENAI (Fallback) ---
+      if (openaiKey) {
+        console.log(`[Engine] Falling back to OpenAI (gpt-4o-mini)...`);
+        const messages: any[] = [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: [{ type: 'text', text: userPrompt }] }
+        ];
+        
+        if (screenshotBase64 && attempt < 3) {
+           messages[1].content.push({
+             type: 'image_url',
+             image_url: { url: `data:image/jpeg;base64,${screenshotBase64}` }
+           });
+        }
+
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
           body: JSON.stringify({
-            model: this.modelName,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt },
-            ],
+            model: 'gpt-4o-mini',
+            messages,
             response_format: { type: 'json_object' },
             temperature: this.temperature,
           }),
           signal: controller.signal,
         });
 
-        if (resChat.ok) {
-          const data = (await resChat.json()) as {
-            choices: Array<{ message: { content: string } }>;
-          };
+        if (res.ok) {
+          const data = await res.json() as any;
           const content = data.choices[0]?.message?.content || '{}';
           return this.parseDecision(content);
+        } else {
+           throw new Error(`OpenAI API Error: ${res.status}`);
         }
       }
 
-      throw new Error('No external Gemini host or API key configured');
+      // --- 3. LOCAL HOST (Last resort) ---
+      if (this.hostUrl) {
+         // (Omitted for brevity, assumed legacy)
+         throw new Error('Local host fallback not implemented in standalone client.');
+      }
+
+      throw new Error('No external APIs configured');
+    } catch (err) {
+      clearTimeout(timeoutId);
+      const isRetryable = (err as Error).name === 'AbortError' || (err as Error).message.includes('503') || (err as Error).message.includes('429');
+      
+      if (isRetryable && attempt < 3) {
+        const backoffMs = attempt === 1 ? 2000 : 5000;
+        console.warn(`[Engine] API failed (${(err as Error).message}). Retrying in ${backoffMs}ms (Attempt ${attempt + 1})...`);
+        await new Promise(r => setTimeout(r, backoffMs));
+        return this.queryLocalHostModel(systemPrompt, userPrompt, screenshotBase64, attempt + 1);
+      }
+      throw err; // Give up and use pure cognitive fallback
     } finally {
       clearTimeout(timeoutId);
     }

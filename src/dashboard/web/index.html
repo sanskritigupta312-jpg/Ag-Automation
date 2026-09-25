@@ -78,6 +78,25 @@
 
         <form class="profile-form" id="profile-form" novalidate>
 
+          <!-- API Configuration -->
+          <div class="form-section">
+            <h2 class="section-title">
+              <span class="section-icon">🔑</span>
+              API Keys (Bring Your Own Key)
+            </h2>
+            <p class="form-note" style="margin-bottom: 16px;">This script requires your own API keys. It uses Google Gemini by default, but will fallback to OpenAI (ChatGPT) if Gemini experiences 503 errors.</p>
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="field-gemini-key">Google Gemini API Key (Required)</label>
+                <input type="password" id="field-gemini-key" name="geminiKey" placeholder="AIzaSy..." required />
+              </div>
+              <div class="form-group">
+                <label for="field-openai-key">OpenAI API Key (Optional Fallback)</label>
+                <input type="password" id="field-openai-key" name="openaiKey" placeholder="sk-proj..." />
+              </div>
+            </div>
+          </div>
+
           <!-- Basic Info -->
           <div class="form-section">
             <h2 class="section-title">
