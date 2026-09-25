@@ -440,13 +440,17 @@ export class ThreadsOperator {
 
       await this.sleep(400);
 
-      // Click Post button at exact coordinate
+      // Click Post button with full React event chain
       await page.evaluate(() => {
         const btns = Array.from(document.querySelectorAll('div[role="button"], button'));
         for (const b of btns) {
           const t = (b.textContent || '').trim();
+          const aria = b.getAttribute('aria-label') || b.querySelector('[aria-label]')?.getAttribute('aria-label') || '';
+          const isPost = t === 'Post' || t === 'Create' || t === 'Reply' || aria === 'Post' || aria === 'Reply';
           const rect = b.getBoundingClientRect();
-          if ((t === 'Post' || t === 'Create') && rect.top > 100 && rect.top < 700) {
+          if (isPost && rect.width > 0 && rect.height > 0) {
+            b.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            b.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
             (b as HTMLElement).click();
             break;
           }
@@ -513,12 +517,17 @@ export class ThreadsOperator {
       await page.keyboard.press('Enter');
       await page.keyboard.up('Control');
 
+      // Click Post / Reply button with full React event chain
       await page.evaluate(() => {
         const btns = Array.from(document.querySelectorAll('div[role="button"], button'));
         for (const b of btns) {
           const t = (b.textContent || '').trim();
+          const aria = b.getAttribute('aria-label') || b.querySelector('[aria-label]')?.getAttribute('aria-label') || '';
+          const isPost = t === 'Post' || t === 'Create' || t === 'Reply' || aria === 'Post' || aria === 'Reply';
           const rect = b.getBoundingClientRect();
-          if ((t === 'Post' || t === 'Create') && rect.top > 100 && rect.top < 700) {
+          if (isPost && rect.width > 0 && rect.height > 0) {
+            b.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            b.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
             (b as HTMLElement).click();
             break;
           }

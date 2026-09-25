@@ -576,15 +576,27 @@ Inspect the visual viewport screenshot and semantic DOM. Reason about the most n
     // ── POST_OPEN MODE (Inside opened post view) ──
     if (mode === 'POST_OPEN') {
       if (openComposer) {
+        const fallbackText = `Great work @${authorHandle || 'creator'}! As a ${p?.profession || 'Frontend Developer'}, really appreciate you sharing this! Portfolio: ${SemanticPostReasoner.extractPortfolio(p)}`;
+        const comment = evalResult.synthesizedComment || fallbackText;
         return {
           thought: `[Step 4/6: Comment] Tailoring comment for @${authorHandle || 'author'} on behalf of ${profileName}.`,
           action: 'COMMENT',
           targetElementId: openComposer.id,
           targetDescription: openComposer.placeholder || 'Reply textbox',
-          synthesizedText: evalResult.synthesizedComment,
+          synthesizedText: comment,
           recommendedDelayMs: 3500,
           confidence: evalResult.relevanceScore,
           postRelevanceReason: evalResult.reason,
+        };
+      }
+
+      // If the post is irrelevant and no composer is open, navigate back immediately
+      if (!evalResult.isRelevant) {
+        return {
+          thought: `[Step 6/6: Go Back] Post does not align with ${profileName}'s goals (${evalResult.reason}). Returning to feed.`,
+          action: 'GO_BACK',
+          recommendedDelayMs: 2500,
+          confidence: 0.95,
         };
       }
 

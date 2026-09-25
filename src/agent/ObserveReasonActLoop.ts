@@ -375,13 +375,17 @@ export class ObserveReasonActLoop {
           executedActions.push(`Clicked Post button at (${submitPt.x}, ${submitPt.y})`);
         }
 
-        // Direct DOM click safety fallback
+        // Direct DOM click safety fallback with full React event chain
         await page.evaluate(() => {
           const btns = Array.from(document.querySelectorAll('div[role="button"], button'));
           for (const b of btns) {
             const text = (b.textContent || '').trim();
             const aria = b.getAttribute('aria-label') || b.querySelector('[aria-label]')?.getAttribute('aria-label') || '';
-            if ((text === 'Post' || text === 'Reply' || aria === 'Post' || aria === 'Reply') && b.getBoundingClientRect().width > 0) {
+            const isPostBtn = text === 'Post' || text === 'Reply' || aria === 'Post' || aria === 'Reply';
+            const rect = b.getBoundingClientRect();
+            if (isPostBtn && rect.width > 0 && rect.height > 0) {
+              b.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+              b.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
               (b as HTMLElement).click();
               break;
             }

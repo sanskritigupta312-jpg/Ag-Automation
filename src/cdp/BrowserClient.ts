@@ -448,17 +448,7 @@ export class BrowserClient {
             });
             await new Promise((r) => setTimeout(r, action.delayMs));
           } else if (action.type === 'type' && action.char) {
-            await cdp.send('Input.dispatchKeyEvent', {
-              type: 'keyDown',
-              text: action.char,
-              unmodifiedText: action.char,
-              key: action.char,
-            });
-            await new Promise((r) => setTimeout(r, 20 + Math.floor(Math.random() * 20)));
-            await cdp.send('Input.dispatchKeyEvent', {
-              type: 'keyUp',
-              key: action.char,
-            });
+            await cdp.send('Input.insertText', { text: action.char });
             await new Promise((r) => setTimeout(r, action.delayMs));
           }
         }

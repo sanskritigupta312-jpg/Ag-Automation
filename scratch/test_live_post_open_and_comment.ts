@@ -155,14 +155,17 @@ async function main() {
 
   await new Promise((r) => setTimeout(r, 600));
 
-  // Also click Post button if visible
+  // Also click Post / Reply button if visible with full React event chain
   await page.evaluate(() => {
     const btns = Array.from(document.querySelectorAll('div[role="button"], button'));
     for (const b of btns) {
       const t = (b.textContent || '').trim();
       const a = (b.getAttribute('aria-label') || '').trim();
+      const isPost = t === 'Post' || t === 'Reply' || t === 'Create' || a === 'Post' || a === 'Reply';
       const rect = b.getBoundingClientRect();
-      if ((t === 'Post' || t === 'Reply' || a === 'Post' || a === 'Reply') && rect.top > 80 && rect.top < 750 && rect.width > 0) {
+      if (isPost && rect.width > 0 && rect.height > 0) {
+        b.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        b.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
         (b as HTMLElement).click();
         break;
       }

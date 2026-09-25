@@ -85,6 +85,10 @@ export class InboundMonitor {
     } catch (err) {
       this.log(`[InboundMonitor] Error in inbound check: ${(err as Error).message}`);
     } finally {
+      try {
+        await this.browserClient.navigateTo('https://www.threads.com/');
+        await this.sleep(2000, 3000);
+      } catch {}
       this.isChecking = false;
     }
   }
