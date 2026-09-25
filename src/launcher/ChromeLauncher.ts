@@ -70,8 +70,7 @@ export class ChromeLauncher {
       `--user-data-dir=${userDataDir}`,
       '--no-first-run',
       '--no-default-browser-check',
-      '--disable-blink-features=AutomationControlled',
-      'https://www.threads.net',
+      'https://www.threads.com',
     ];
 
     const child: ChildProcess = spawn(chromePath, args, {

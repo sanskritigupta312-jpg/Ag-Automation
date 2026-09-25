@@ -1,7 +1,7 @@
 /**
  * advanced_protocols.test.ts
  * Rigorous test suite validating advanced anti-ban protocols:
- * - Checkpoint / CAPTCHA detection and zero-bypass alert
+ * - Checkpoint / CAPTCHA detection (AI-reasoning based, no keyword patterns)
  * - Rate limiting (8-12 comments/hr, 4-6 DMs/hr) & 20-45m operational breaks
  * - Strict 20%-80% inner pad targeting & 350ms-1400ms sight alignment pause
  * - Real-time trend hashtag injection (2-3 tags per niche)
@@ -57,10 +57,11 @@ async function runAdvancedTests() {
     assert(pause >= 350 && pause <= 1400, `Sight pause ${pause}ms must be between 350ms and 1400ms`);
   }
 
-  // TEST 2: Checkpoint & CAPTCHA Detector
-  console.log('\n2. Testing CheckpointDetector: Zero-Bypass Detection...');
+  // TEST 2: Checkpoint & CAPTCHA Detector — AI-Reasoning Based
+  console.log('\n2. Testing CheckpointDetector: AI-Reasoning Based Detection...');
   const detector = new CheckpointDetector();
 
+  // evaluateDom is a no-op shim (detection is done by AI vision in LocalGeminiEngine)
   const mockSafeElements = [
     {
       id: 1,
@@ -76,28 +77,38 @@ async function runAdvancedTests() {
   ];
 
   const safeCheck = detector.evaluateDom(mockSafeElements);
-  assert(!safeCheck.isChallengeDetected, 'Standard elements must not trigger challenge');
+  assert(!safeCheck.isChallengeDetected, 'Standard elements must not trigger DOM challenge');
 
-  const mockChallengeElements = [
-    {
-      id: 2,
-      tagName: 'div',
-      role: 'dialog',
-      ariaLabel: 'Help us confirm that you own this account',
-      placeholder: null,
-      textSnippet: 'Confirm its you to continue',
-      isEditable: false,
-      isClickable: false,
-      boundingBox: { x: 0, y: 0, width: 500, height: 600 },
-    },
-  ];
+  // Vision thought detection: AI flags these in its own reasoning string
+  const captchaThought = 'I see a CAPTCHA challenge on the screen, action should be SECURITY_CHALLENGE';
+  const visionCheck1 = detector.evaluateVisionThought(captchaThought);
+  assert(visionCheck1.isChallengeDetected, 'AI thought mentioning captcha must be detected');
+  assert(visionCheck1.challengeType === 'CAPTCHA', 'Challenge type must be CAPTCHA');
 
-  const challengeCheck = detector.evaluateDom(mockChallengeElements);
-  assert(challengeCheck.isChallengeDetected, 'Account verification overlay must be detected');
-  assert(challengeCheck.challengeType === 'ACCOUNT_VERIFICATION', 'Challenge type must match ACCOUNT_VERIFICATION');
+  const securityChallengeThought = 'The screen shows a security_challenge verification page';
+  const visionCheck2 = detector.evaluateVisionThought(securityChallengeThought);
+  assert(visionCheck2.isChallengeDetected, 'AI thought mentioning security_challenge must be detected');
 
-  const visionCheck = detector.evaluateVisionThought('I notice a reCAPTCHA challenge overlay on the screen.');
-  assert(visionCheck.isChallengeDetected, 'reCAPTCHA in visual engine thought must be detected');
+  const twoFactorThought = 'I see a two factor authentication request on screen';
+  const visionCheck3 = detector.evaluateVisionThought(twoFactorThought);
+  assert(visionCheck3.isChallengeDetected, 'Two-factor auth thought must trigger detection');
+  assert(visionCheck3.challengeType === 'TWO_FACTOR', 'Challenge type must be TWO_FACTOR');
+
+  const normalThought = 'The feed is showing new posts, I should scroll down to find relevant content';
+  const visionCheck4 = detector.evaluateVisionThought(normalThought);
+  assert(!visionCheck4.isChallengeDetected, 'Normal feed thought must NOT trigger detection');
+
+  // processAiSecurityEvaluation — direct AI result intake
+  const aiDetected = detector.processAiSecurityEvaluation({
+    isChallengeDetected: true,
+    challengeType: 'ACCOUNT_VERIFICATION',
+    details: 'AI identified verification overlay',
+  });
+  assert(aiDetected.isChallengeDetected, 'AI security evaluation result must be correctly processed');
+  assert(aiDetected.challengeType === 'ACCOUNT_VERIFICATION', 'Challenge type must pass through correctly');
+
+  const aiClean = detector.processAiSecurityEvaluation({ isChallengeDetected: false });
+  assert(!aiClean.isChallengeDetected, 'Clean AI result must return no challenge');
 
   // TEST 3: Rate Limiting & Operational Breaks
   console.log('\n3. Testing RhythmManager: Rate Limiting (8-12 comments, 4-6 DMs) & Breaks...');

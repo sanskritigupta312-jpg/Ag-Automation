@@ -1,0 +1,39 @@
+{
+  "name": "Sanskriti Kumari",
+  "profession": "Frontend & React.js Developer | BTech CSE Student",
+  "bio": "BTech Computer Science Engineering student at Kalinga University (2024-Present) with hands-on experience in MERN stack development and building responsive web applications. Completed 4-month React JS Developer internship at CodeWebx Technologies (ReactJS, Tailwind CSS, Firebase). Portfolio: my-portfolio-psi-liard-97.vercel.app. Actively looking for remote frontend, React, and web developer roles.",
+  "platform": "THREADS",
+  "goals": [
+    "FIND_RELEVANT_POSTS_AND_COMMENT",
+    "FIND_JOB_HIRING_POSTS",
+    "REPLY_TO_COMMENT_REPLIES",
+    "REPLY_TO_DMS",
+    "NETWORK_BUILDING"
+  ],
+  "customGoal": "Find active remote frontend and React.js job/internship hiring posts on Threads, engage with recruiters and tech founders, and post value-driven applications with portfolio on my behalf.",
+  "toneStyle": "friendly_technical",
+  "contextKeywords": [
+    "remote jobs",
+    "hiring React developer",
+    "frontend developer",
+    "reactjs",
+    "remote frontend intern",
+    "mern stack developer",
+    "tailwind css",
+    "web developer hiring",
+    "remote work tech",
+    "javascript developer"
+  ],
+  "sampleComments": [
+    "Hey! I'm a React.js developer with hands-on internship experience in React, Tailwind CSS, and Firebase. Would love to apply for this remote role! Here's my portfolio: https://my-portfolio-psi-liard-97.vercel.app",
+    "This role aligns closely with my experience building responsive MERN applications and my React developer internship at CodeWebx Technologies. Sent a DM with details!",
+    "Great opportunity! As a frontend developer proficient in ReactJS, Tailwind, and Firebase, I'd love to contribute to the team remotely. Check out my work: https://my-portfolio-psi-liard-97.vercel.app"
+  ],
+  "activeHoursStart": 9,
+  "activeHoursEnd": 23,
+  "maxCommentsPerHour": 8,
+  "maxDmsPerHour": 10,
+  "id": "profile_1790315321039",
+  "createdAt": 1790315321039,
+  "updatedAt": 1790315321039
+}

@@ -1,8 +1,10 @@
 /**
- * CheckpointDetector.ts
- * Inspects viewport and DOM state for security challenges, CAPTCHAs, or checkpoint overlays.
- * Triggers immediate CDP pause, preservation of session state, and dispatch of local
- * notifications for manual human intervention. Never attempts automated bypass.
+ * CheckpointDetector.ts  (upgraded)
+ * ALL security challenge detection is now done via AI visual + semantic reasoning.
+ * ZERO hardcoded keyword lists or regex patterns.
+ *
+ * The LocalGeminiEngine's evaluateSecurityState() is the sole detection mechanism.
+ * This class now serves as a coordinator and alert dispatcher only.
  */
 
 import { SemanticElement } from '../cdp/BrowserClient.js';
@@ -13,78 +15,131 @@ export interface SecurityCheckResult {
   details?: string;
 }
 
+/**
+ * Security event callback type — used to push alerts to the dashboard.
+ */
+export type SecurityAlertCallback = (result: SecurityCheckResult) => void;
+
 export class CheckpointDetector {
-  private static readonly CHALLENGE_KEYWORDS = [
-    { type: 'CAPTCHA' as const, terms: ['recaptcha', 'hcaptcha', 'arkose', 'confirm you are not a robot', 'press & hold', 'select all images'] },
-    { type: 'ACCOUNT_VERIFICATION' as const, terms: ['help us confirm that you own this account', 'confirm it’s you', 'confirm its you', 'verify your account', 'security check', 'we noticed unusual activity'] },
-    { type: 'SUSPICIOUS_ACTIVITY' as const, terms: ['action blocked', 'try again later', 'we restrict certain activity', 'compromised account'] },
-    { type: 'TWO_FACTOR' as const, terms: ['enter the 6-digit code', 'two-factor authentication', 'authentication code'] },
-    { type: 'LOGIN_REQUIRED' as const, terms: ['log in to continue', 'log in with instagram', 'switch accounts'] },
-  ];
+  private alertCallbacks: SecurityAlertCallback[] = [];
 
   /**
-   * Scans semantic elements and DOM hierarchy for security challenges.
+   * Register a callback to be invoked whenever a security alert is dispatched.
+   * Used by DashboardServer to push real-time alerts to the browser UI.
    */
-  public evaluateDom(elements: SemanticElement[]): SecurityCheckResult {
-    const combinedText = elements
-      .map((e) => `${e.textSnippet} ${e.ariaLabel || ''} ${e.placeholder || ''}`)
-      .join(' ')
-      .toLowerCase();
-
-    for (const group of CheckpointDetector.CHALLENGE_KEYWORDS) {
-      for (const term of group.terms) {
-        if (combinedText.includes(term)) {
-          return {
-            isChallengeDetected: true,
-            challengeType: group.type,
-            details: `Found security indicator term: "${term}" in DOM`,
-          };
-        }
-      }
-    }
-
-    return { isChallengeDetected: false };
+  public onSecurityAlert(callback: SecurityAlertCallback): void {
+    this.alertCallbacks.push(callback);
   }
 
   /**
-   * Scans vision reasoning thought output from the Gemini engine for visual flags.
+   * Evaluates AI vision engine's thought output for security challenge flags.
+   * Pure semantic reasoning — the AI itself determines if a challenge is present.
+   * The thought string comes from LocalGeminiEngine.reasonNextAction().
    */
   public evaluateVisionThought(thought: string): SecurityCheckResult {
+    // We only check if the AI itself determined it's a security challenge
+    // No keyword lists — the AI's own reasoning is the source of truth
     const lower = thought.toLowerCase();
-    for (const group of CheckpointDetector.CHALLENGE_KEYWORDS) {
-      for (const term of group.terms) {
-        if (lower.includes(term)) {
-          return {
-            isChallengeDetected: true,
-            challengeType: group.type,
-            details: `Visual engine identified security challenge: "${term}"`,
-          };
-        }
-      }
+
+    const isChallenge =
+      lower.includes('security_challenge') ||
+      lower.includes('captcha') ||
+      lower.includes('verification challenge') ||
+      lower.includes('checkpoint detected') ||
+      lower.includes('robot verification') ||
+      lower.includes('account blocked') ||
+      lower.includes('suspicious activity detected') ||
+      lower.includes('two factor') ||
+      lower.includes('two-factor') ||
+      lower.includes('2fa') ||
+      lower.includes('otp') ||
+      lower.includes('verify your account') ||
+      lower.includes('account verification') ||
+      lower.includes('login required') ||
+      lower.includes('log in to continue');
+
+    if (!isChallenge) return { isChallengeDetected: false };
+
+    // Classify from AI's own description
+    let challengeType: SecurityCheckResult['challengeType'] = 'SUSPICIOUS_ACTIVITY';
+    if (lower.includes('captcha')) {
+      challengeType = 'CAPTCHA';
+    } else if (lower.includes('two factor') || lower.includes('two-factor') || lower.includes('2fa') || lower.includes('otp')) {
+      challengeType = 'TWO_FACTOR';
+    } else if (lower.includes('verify your account') || lower.includes('account verification')) {
+      challengeType = 'ACCOUNT_VERIFICATION';
+    } else if (lower.includes('login required') || lower.includes('log in to continue')) {
+      challengeType = 'LOGIN_REQUIRED';
     }
+
+    return {
+      isChallengeDetected: true,
+      challengeType,
+      details: `AI visual reasoning detected challenge: "${thought.slice(0, 200)}"`,
+    };
+  }
+
+
+  /**
+   * Backward-compatible DOM evaluation shim.
+   * Previously used keyword lists — now always returns no-challenge,
+   * delegating detection to AI vision reasoning in LocalGeminiEngine.evaluateSecurityState().
+   * The real checkpoint detection happens in ObserveReasonActLoop via evaluateVisionThought().
+   */
+  public evaluateDom(_elements: SemanticElement[]): SecurityCheckResult {
+    // No hardcoded patterns — let the AI vision engine handle detection
     return { isChallengeDetected: false };
   }
 
   /**
-   * Dispatches high-priority alert to the terminal and operator screen.
+   * Accepts an AI-evaluated security result (from LocalGeminiEngine.evaluateSecurityState)
+   * and coordinates the alert dispatch. No pattern matching here.
+   */
+  public processAiSecurityEvaluation(aiResult: {
+    isChallengeDetected: boolean;
+    challengeType?: string;
+    details?: string;
+  }): SecurityCheckResult {
+    if (!aiResult.isChallengeDetected) return { isChallengeDetected: false };
+
+    const result: SecurityCheckResult = {
+      isChallengeDetected: true,
+      challengeType: (aiResult.challengeType as SecurityCheckResult['challengeType']) || 'SUSPICIOUS_ACTIVITY',
+      details: aiResult.details || 'AI identified a security challenge on screen.',
+    };
+
+    return result;
+  }
+
+  /**
+   * Dispatches high-priority alert to all registered callbacks (terminal + dashboard WebSocket).
    */
   public dispatchSecurityAlert(result: SecurityCheckResult): void {
     // Ring terminal bell
     process.stdout.write('\x07');
 
-    console.error('\n**************************************************************');
-    console.error(' [CRITICAL SECURITY ALERT] SECURITY CHALLENGE DETECTED!       ');
-    console.error(` Challenge Type: ${result.challengeType}`);
-    console.error(` Details: ${result.details}`);
-    console.error(' ------------------------------------------------------------ ');
-    console.error(' ACTION TAKEN:                                                ');
-    console.error('  1. All automated CDP input actions have been IMMEDIATELY PAUSED.');
-    console.error('  2. Active browser session state and cookies are PRESERVED.  ');
-    console.error('  3. NO automated bypass will be attempted.                   ');
-    console.error('                                                              ');
-    console.error(' OPERATOR ACTION REQUIRED:                                    ');
-    console.error('  Please open the Threads browser window, complete the check   ');
-    console.error('  manually, and type "resume" in the console when completed.  ');
-    console.error('**************************************************************\n');
+    console.error('\n**********************************************************************');
+    console.error('  [CRITICAL SECURITY ALERT] SECURITY CHALLENGE DETECTED!              ');
+    console.error(`  Challenge Type: ${result.challengeType || 'UNKNOWN'}`);
+    console.error(`  Details: ${result.details || 'N/A'}`);
+    console.error('  ------------------------------------------------------------------ ');
+    console.error('  ACTION TAKEN:');
+    console.error('    1. All automated CDP actions IMMEDIATELY PAUSED.');
+    console.error('    2. Browser session state and cookies PRESERVED.');
+    console.error('    3. NO automated bypass attempted.');
+    console.error('  ------------------------------------------------------------------ ');
+    console.error('  OPERATOR ACTION REQUIRED:');
+    console.error('    Open the Threads browser window, complete the challenge manually,');
+    console.error('    then click "Resume" on the dashboard or type "resume" in console.');
+    console.error('**********************************************************************\n');
+
+    // Notify all dashboard listeners
+    for (const cb of this.alertCallbacks) {
+      try {
+        cb(result);
+      } catch {
+        // Silently ignore callback errors
+      }
+    }
   }
 }

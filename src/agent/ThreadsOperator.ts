@@ -1,11 +1,14 @@
 /**
- * ThreadsOperator.ts
- * High-level Autonomous Operator coordinating:
- * - Post discovery & contextual commenting with real-time trend injection
- * - Agentic DM & comment replies with zero-reject policy and sliding window memory
- * - Checkpoint detection & zero-bypass emergency pause protocol
- * - 2-hour runtime health reload lifecycle
- * - Real-time operator interaction (pause, resume, target profile, mode switch)
+ * ThreadsOperator.ts  (upgraded)
+ * High-level Autonomous Operator coordinating all agents:
+ * - Customer profile-driven operation
+ * - Pre-operation intent review (via dashboard)
+ * - Full FEED cycle with post-open, comment, verify, back
+ * - Parallel InboundMonitor for DM + notification replies
+ * - AI-only checkpoint detection
+ * - AgentMonitor health watchdog
+ * - 2-hour runtime graceful reload
+ * - Real-time telemetry streaming to dashboard
  */
 
 import { BrowserClient } from '../cdp/BrowserClient.js';
@@ -17,10 +20,14 @@ import { CheckpointDetector } from '../security/CheckpointDetector.js';
 import { TrendInjector } from '../trend/TrendInjector.js';
 import { SessionManager } from '../session/SessionManager.js';
 import { ChromeLauncher } from '../launcher/ChromeLauncher.js';
-import { ObserveReasonActLoop, CycleResult } from './ObserveReasonActLoop.js';
+import { ObserveReasonActLoop, OperationalMode, CycleResult } from './ObserveReasonActLoop.js';
+import { InboundMonitor } from './InboundMonitor.js';
+import { AgentMonitor } from '../monitor/AgentMonitor.js';
+import { CustomerProfile, AgentTelemetry, OperationIntent } from '../types/CustomerProfile.js';
+import { IntentInterviewer } from '../intent/IntentInterviewer.js';
 
 export interface OperatorConfig {
-  initialMode?: 'FEED' | 'DM' | 'PROFILE';
+  initialMode?: OperationalMode;
   targetUsername?: string;
   maxCycles?: number;
   cdpPort?: number;
@@ -28,20 +35,33 @@ export interface OperatorConfig {
 
 export class ThreadsOperator {
   private browserClient: BrowserClient;
+  private geminiEngine: LocalGeminiEngine;
   private loop: ObserveReasonActLoop;
   private rhythmManager: RhythmManager;
   private sessionManager: SessionManager;
   private checkpointDetector: CheckpointDetector;
+  private inboundMonitor: InboundMonitor;
+  private agentMonitor: AgentMonitor;
+  private intentInterviewer: IntentInterviewer;
 
-  private currentMode: 'FEED' | 'DM' | 'PROFILE';
+  private currentMode: OperationalMode;
   private targetUsername?: string;
   private isPaused: boolean = false;
   private isRunning: boolean = false;
   private maxCycles: number;
   private cdpPort: number;
+  private cycleCount: number = 0;
 
-  // Conversational memory for multi-turn DMs
-  private dmConversationHistory: Map<string, string[]> = new Map();
+  private customerProfile: CustomerProfile | null = null;
+  private pendingIntent: OperationIntent | null = null;
+  private recentLog: string[] = [];
+  private keystrokeSynthesizer!: KeystrokeSynthesizer;
+
+  /** Callbacks registered by DashboardServer for real-time telemetry */
+  public onTelemetryUpdate?: (telemetry: AgentTelemetry) => void;
+  public onIntentReady?: (intent: OperationIntent) => void;
+  public onSecurityAlert?: (details: string) => void;
+  public onLogEntry?: (entry: string) => void;
 
   constructor(
     browserClient: BrowserClient,
@@ -49,22 +69,54 @@ export class ThreadsOperator {
     config: OperatorConfig = {}
   ) {
     this.browserClient = browserClient;
+    this.geminiEngine = engine;
     this.rhythmManager = new RhythmManager();
     this.sessionManager = new SessionManager();
     this.checkpointDetector = new CheckpointDetector();
+    this.intentInterviewer = new IntentInterviewer();
+    this.agentMonitor = new AgentMonitor();
+
     const trendInjector = new TrendInjector();
     const cursor = new CursorPhysics();
-    const keystroke = new KeystrokeSynthesizer();
+    this.keystrokeSynthesizer = new KeystrokeSynthesizer();
 
     this.loop = new ObserveReasonActLoop(
       this.browserClient,
       engine,
       cursor,
-      keystroke,
+      this.keystrokeSynthesizer,
       this.rhythmManager,
       this.checkpointDetector,
       trendInjector
     );
+
+    this.inboundMonitor = new InboundMonitor(
+      this.browserClient,
+      engine,
+      this.keystrokeSynthesizer,
+      cursor,
+      this.rhythmManager
+    );
+
+    // Wire up log callbacks
+    this.loop.onLogEntry = (entry) => this.pushLog(entry);
+    this.inboundMonitor.onLogEntry = (entry) => this.pushLog(entry);
+
+    // Wire up security alert callback
+    this.checkpointDetector.onSecurityAlert((result) => {
+      const alertMsg = `⚠ SECURITY ALERT: ${result.challengeType} — ${result.details}`;
+      this.pushLog(alertMsg);
+      if (this.onSecurityAlert) this.onSecurityAlert(alertMsg);
+    });
+
+    // Wire up health monitor
+    this.agentMonitor.onStallDetected = (details) => {
+      this.pushLog(`[HealthMonitor] ${details}`);
+      if (this.onSecurityAlert) this.onSecurityAlert(details);
+    };
+    this.agentMonitor.onHealthUpdate = () => {
+      this.broadcastTelemetry();
+    };
 
     this.currentMode = config.initialMode || 'FEED';
     this.targetUsername = config.targetUsername;
@@ -73,56 +125,128 @@ export class ThreadsOperator {
   }
 
   /**
-   * Starts the autonomous operational cycle.
+   * Load a customer profile and prepare the intent for dashboard review.
+   */
+  public loadCustomerProfile(profile: CustomerProfile): void {
+    this.customerProfile = profile;
+    this.geminiEngine.setCustomerProfile(profile);
+
+    // Apply customer's rate limit preferences
+    if (profile.maxCommentsPerHour || profile.maxDmsPerHour) {
+      this.rhythmManager = new RhythmManager({
+        maxCommentsPerHour: profile.maxCommentsPerHour,
+        maxDmsPerHour: profile.maxDmsPerHour,
+      });
+    }
+
+    // Build and emit the intent for customer approval
+    const intent = this.intentInterviewer.buildSessionIntent(
+      profile,
+      new Date().getHours()
+    );
+    this.pendingIntent = intent;
+
+    this.pushLog(`[Operator] Customer profile loaded: ${profile.name} (${profile.profession})`);
+
+    if (this.onIntentReady) {
+      this.onIntentReady(intent);
+    }
+  }
+
+  /**
+   * Called by the dashboard when the customer approves the intent.
+   * Also accepts optional modification notes from the customer.
+   */
+  public approveIntent(notes?: string): void {
+    if (this.pendingIntent) {
+      this.pendingIntent.approved = true;
+      this.pendingIntent.customerNotes = notes;
+      this.pushLog(`[Operator] Intent approved by customer. Starting automation...`);
+    }
+  }
+
+  /**
+   * Starts the autonomous operational loop.
+   * Will wait until intent is approved if a profile is loaded.
    */
   public async start(): Promise<void> {
     this.isRunning = true;
-    console.log(`[ThreadsOperator] Initializing operations in mode: ${this.currentMode}`);
+    this.agentMonitor.start();
 
-    // Restore persistent session state if available
+    // Restore session state
     const page = this.browserClient.getActivePage();
     const cdp = this.browserClient.getCdpSession();
     if (page && cdp) {
       await this.sessionManager.restoreSessionState(page, cdp);
     }
 
+    // Wait for intent approval if profile is loaded
+    if (this.customerProfile && this.pendingIntent && !this.pendingIntent.approved) {
+      this.pushLog('[Operator] Waiting for customer to approve the session intent on the dashboard...');
+      await this.waitForIntentApproval();
+    }
+
+    // Initialize inbound monitor
+    if (
+      this.customerProfile?.goals.some(
+        (g) => g === 'REPLY_TO_DMS' || g === 'REPLY_TO_COMMENT_REPLIES'
+      )
+    ) {
+      await this.inboundMonitor.start();
+    }
+
+    this.pushLog('[Operator] 🚀 Automation started!');
+
     let cycle = 0;
     while (this.isRunning && cycle < this.maxCycles) {
-      // 1. Check for Operator Pause
       if (this.isPaused) {
-        console.log(`[ThreadsOperator] Paused. Awaiting manual intervention or operator 'resume'...`);
-        await new Promise((r) => setTimeout(r, 2500));
+        await this.sleep(2500);
         continue;
       }
 
-      // 2. Check for 2-Hour Runtime Health Reload
       if (this.sessionManager.isGracefulReloadDue()) {
         await this.performGracefulBrowserReload();
         continue;
       }
 
-      // 3. Check for Operational Cooldown Break
       const breakStatus = this.rhythmManager.isInOperationalBreak();
       if (breakStatus.active) {
-        console.log(
-          `[ThreadsOperator] Operational cool-down break in progress. Sleeping for ${Math.round(
-            breakStatus.remainingMs / 60000
-          )} minutes to simulate natural human rest.`
-        );
-        const sleepChunk = Math.min(30000, breakStatus.remainingMs);
-        await new Promise((r) => setTimeout(r, sleepChunk));
+        const msg = `[Operator] Cool-down break — ${Math.round(breakStatus.remainingMs / 60000)} min remaining`;
+        this.pushLog(msg);
+        await this.sleep(Math.min(30000, breakStatus.remainingMs));
         continue;
       }
 
-      cycle++;
-      try {
-        // Sliding context window: pass last 3-5 DM exchanges
-        const slidingChat = this.getSlidingChatContext();
-        const result: CycleResult = await this.loop.executeCycle(this.currentMode, slidingChat);
+      // Safe, coordinated inbound check (every 8 cycles) if customer has inbound reply goals
+      const hasInboundGoal = this.customerProfile?.goals.some(
+        (g) => g === 'REPLY_TO_DMS' || g === 'REPLY_TO_COMMENT_REPLIES'
+      );
+      if (hasInboundGoal && cycle > 0 && cycle % 8 === 0) {
+        this.pushLog('[Operator] Scheduled Inbound Check: scanning DMs and Notifications for new replies...');
+        try {
+          await this.inboundMonitor.runSingleCheckCycle();
+          this.pushLog('[Operator] Inbound check completed. Resuming feed operations.');
+        } catch (inboundErr) {
+          this.pushLog(`[InboundMonitor] Notice: ${(inboundErr as Error).message}`);
+        }
+      }
 
-        // Security checkpoint handling: immediately pause and preserve state
+      cycle++;
+      this.agentMonitor.recordHeartbeat(`Cycle #${cycle} [${this.currentMode}]`);
+
+      try {
+        const result: CycleResult = await this.loop.executeCycle(this.currentMode);
+        this.cycleCount++;
+
+        // Handle mode switch requested by AI
+        if (result.requestedModeSwitch) {
+          this.currentMode = result.requestedModeSwitch;
+          this.pushLog(`[Operator] AI requested mode switch → ${this.currentMode}`);
+        }
+
+        // Handle security challenge
         if (result.securityChallenge?.isChallengeDetected) {
-          console.warn(`[ThreadsOperator] Security challenge triggered emergency pause.`);
+          this.pushLog('[Operator] ⚠ Security challenge — pausing automation.');
           this.isPaused = true;
           const activeP = this.browserClient.getActivePage();
           const activeCdp = this.browserClient.getCdpSession();
@@ -132,29 +256,35 @@ export class ThreadsOperator {
           continue;
         }
 
-        // Record DM thread history
-        if (result.mode === 'DM' && result.decision.synthesizedText) {
-          this.recordDmMessage('active_thread', `Operator: ${result.decision.synthesizedText}`);
-        }
+        this.broadcastTelemetry();
 
-        console.log(`[ThreadsOperator] Dwell pause before next cycle: ${result.delayMs}ms...`);
-        await new Promise((r) => setTimeout(r, result.delayMs));
+        this.pushLog(`[Operator] Cycle done. Next in ${result.delayMs}ms...`);
+        await this.sleep(result.delayMs);
       } catch (err) {
-        console.error(`[ThreadsOperator] Error during cycle #${cycle}: ${(err as Error).message}`);
-        console.log(`[ThreadsOperator] Initiating dynamic recovery pause (5s)...`);
-        await new Promise((r) => setTimeout(r, 5000));
+        const msg = `[Operator] Error in cycle #${cycle}: ${(err as Error).message}`;
+        this.pushLog(msg);
+        await this.sleep(5000);
       }
     }
 
-    console.log(`[ThreadsOperator] Operations concluded.`);
+    this.pushLog('[Operator] Operations concluded.');
+    this.agentMonitor.stop();
   }
 
-  /**
-   * Performs graceful session reload every 2 hours:
-   * Saves cookies/storage, disconnects, re-launches Chrome CDP, and resumes.
-   */
+  private async waitForIntentApproval(): Promise<void> {
+    const maxWaitMs = 10 * 60 * 1000; // Wait max 10 minutes
+    const startTime = Date.now();
+    while (this.pendingIntent && !this.pendingIntent.approved) {
+      if (Date.now() - startTime > maxWaitMs) {
+        this.pushLog('[Operator] Intent approval timeout — starting anyway.');
+        break;
+      }
+      await this.sleep(2000);
+    }
+  }
+
   private async performGracefulBrowserReload(): Promise<void> {
-    console.log(`[ThreadsOperator] 2-Hour runtime health threshold reached. Executing graceful session reload...`);
+    this.pushLog('[Operator] 2-hour reload cycle — saving session and restarting...');
     const page = this.browserClient.getActivePage();
     const cdp = this.browserClient.getCdpSession();
     if (page && cdp) {
@@ -162,8 +292,6 @@ export class ThreadsOperator {
     }
 
     await this.browserClient.disconnect();
-    console.log(`[ThreadsOperator] Disconnected existing session. Re-launching Chrome CDP...`);
-
     await ChromeLauncher.ensureChromeWithCdp(this.cdpPort);
     await this.browserClient.connect();
 
@@ -174,33 +302,79 @@ export class ThreadsOperator {
     }
 
     this.sessionManager.markReloadCompleted();
-    console.log(`[ThreadsOperator] Graceful session reload completed successfully.`);
+    this.pushLog('[Operator] Graceful reload completed.');
+  }
+
+  private pushLog(entry: string): void {
+    const timestamped = `[${new Date().toLocaleTimeString()}] ${entry}`;
+    console.log(timestamped);
+    this.recentLog.push(timestamped);
+    if (this.recentLog.length > 100) this.recentLog.shift();
+    if (this.onLogEntry) this.onLogEntry(timestamped);
+  }
+
+  private broadcastTelemetry(): void {
+    if (this.onTelemetryUpdate) {
+      this.onTelemetryUpdate(this.getTelemetry());
+    }
+  }
+
+  public getTelemetry(): AgentTelemetry {
+    const stats = this.rhythmManager.getStats();
+    return {
+      isRunning: this.isRunning,
+      isPaused: this.isPaused,
+      currentMode: this.currentMode,
+      currentAction: this.recentLog[this.recentLog.length - 1] || 'Idle',
+      lastActionAt: stats.lastActionTimestamp,
+      cycleCount: this.cycleCount,
+      uptimeMinutes: Math.round(this.sessionManager.getSessionUptimeMs() / 60000),
+      stats: {
+        totalInteractions: stats.totalInteractions,
+        totalComments: stats.totalComments,
+        totalDMs: stats.totalDMs,
+        totalScrolls: stats.totalScrolls,
+        totalReplies: 0,
+        commentsPastHour: stats.commentsPastHour,
+        dmsPastHour: stats.dmsPastHour,
+        isCoolingDown: stats.isCoolingDown,
+      },
+      recentLog: this.recentLog.slice(-30),
+    };
+  }
+
+  public getCustomerProfile(): CustomerProfile | null {
+    return this.customerProfile;
+  }
+
+  public getPendingIntent(): OperationIntent | null {
+    return this.pendingIntent;
   }
 
   public stop(): void {
     this.isRunning = false;
+    this.inboundMonitor.stop();
+    this.agentMonitor.stop();
   }
 
   public pause(): void {
     this.isPaused = true;
-    console.log(`[ThreadsOperator] Operator command received: PAUSE`);
+    this.pushLog('[Operator] PAUSED by operator command.');
   }
 
   public resume(): void {
     this.isPaused = false;
-    console.log(`[ThreadsOperator] Operator command received: RESUME`);
+    this.pushLog('[Operator] RESUMED by operator command.');
   }
 
-  public setMode(mode: 'FEED' | 'DM' | 'PROFILE'): void {
+  public setMode(mode: OperationalMode): void {
     this.currentMode = mode;
-    console.log(`[ThreadsOperator] Mode updated to: ${mode}`);
+    this.pushLog(`[Operator] Mode → ${mode}`);
   }
 
   public async targetProfile(username: string): Promise<void> {
-    this.targetUsername = username.replace(/^@/, '');
+    this.targetUsername = username.startsWith('@') ? username.slice(1) : username;
     this.currentMode = 'PROFILE';
-    console.log(`[ThreadsOperator] Targeting profile: @${this.targetUsername}`);
-
     const page = this.browserClient.getActivePage();
     if (page) {
       await page.goto(`https://www.threads.net/@${this.targetUsername}`, {
@@ -209,30 +383,148 @@ export class ThreadsOperator {
     }
   }
 
-  public getStatus() {
-    return {
-      isRunning: this.isRunning,
-      isPaused: this.isPaused,
-      currentMode: this.currentMode,
-      targetUsername: this.targetUsername,
-      stats: this.rhythmManager.getStats(),
-      circadianFactor: this.rhythmManager.getCircadianFactor(),
-      uptimeMinutes: Math.round(this.sessionManager.getSessionUptimeMs() / 60000),
-    };
-  }
+  /**
+   * Publishes a new thread / post directly from the dashboard.
+   */
+  public async publishCustomPost(text: string): Promise<{ success: boolean; message: string }> {
+    this.pushLog(`[Operator] Manual Post triggered: "${text.slice(0, 50)}..."`);
+    const page = this.browserClient.getActivePage();
+    if (!page) {
+      return { success: false, message: 'No active browser page' };
+    }
 
-  private recordDmMessage(threadId: string, message: string): void {
-    const list = this.dmConversationHistory.get(threadId) || [];
-    list.push(message);
-    if (list.length > 20) list.shift();
-    this.dmConversationHistory.set(threadId, list);
+    try {
+      await page.bringToFront();
+
+      // Open new thread composer
+      const opened = await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('div[role="button"], button'));
+        for (const b of btns) {
+          const t = (b.textContent || '').trim();
+          const aria = (b.getAttribute('aria-label') || '').trim();
+          if (
+            t === 'New thread' ||
+            t.includes("What's new") ||
+            aria.includes("compose a new post") ||
+            aria.includes("New thread")
+          ) {
+            (b as HTMLElement).click();
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (!opened) {
+        await page.mouse.click(300, 110);
+      }
+
+      await this.sleep(1200);
+
+      // Focus open textbox
+      await page.evaluate(() => {
+        const tb = document.querySelector('div[role="textbox"]');
+        if (tb) (tb as HTMLElement).focus();
+      });
+
+      // Type text
+      const keystrokes = this.keystrokeSynthesizer.synthesizeKeystrokes(text);
+      await this.browserClient.dispatchKeystrokeActions(keystrokes);
+      await this.sleep(800);
+
+      // Submit via Ctrl+Enter
+      await page.keyboard.down('Control');
+      await page.keyboard.press('Enter');
+      await page.keyboard.up('Control');
+
+      await this.sleep(400);
+
+      // Click Post button at exact coordinate
+      await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('div[role="button"], button'));
+        for (const b of btns) {
+          const t = (b.textContent || '').trim();
+          const rect = b.getBoundingClientRect();
+          if ((t === 'Post' || t === 'Create') && rect.top > 100 && rect.top < 700) {
+            (b as HTMLElement).click();
+            break;
+          }
+        }
+      });
+
+      this.pushLog(`[Operator] ✓ Post published successfully to Threads: "${text.slice(0, 40)}..."`);
+      this.broadcastTelemetry();
+      return { success: true, message: 'Post published successfully to Threads!' };
+    } catch (err) {
+      this.pushLog(`[Operator] Failed to publish post: ${(err as Error).message}`);
+      return { success: false, message: (err as Error).message };
+    }
   }
 
   /**
-   * Returns sliding context window strictly containing the last 3-5 messages.
+   * Immediately triggers a comment cycle on the current feed.
    */
-  private getSlidingChatContext(threadId: string = 'active_thread'): string[] {
-    const history = this.dmConversationHistory.get(threadId) || [];
-    return history.slice(-5);
+  public async triggerImmediateComment(customComment?: string): Promise<{ success: boolean; message: string }> {
+    this.pushLog(`[Operator] Immediate Comment triggered from Dashboard...`);
+    const page = this.browserClient.getActivePage();
+    if (!page) return { success: false, message: 'No active browser page' };
+
+    try {
+      await page.bringToFront();
+
+      // Look for a Reply button on a post currently visible
+      const clicked = await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('div[role="button"], button'));
+        for (const b of btns) {
+          const t = (b.textContent || '').trim();
+          const aria = (b.getAttribute('aria-label') || '').trim();
+          const rect = b.getBoundingClientRect();
+          if ((t.startsWith('Reply') || aria.startsWith('Reply')) && rect.top > 50 && rect.top < 650 && rect.width > 0) {
+            (b as HTMLElement).click();
+            return true;
+          }
+        }
+        return false;
+      });
+
+      await this.sleep(1500);
+
+      const commentText =
+        customComment ||
+        (this.customerProfile?.sampleComments && this.customerProfile.sampleComments.length > 0
+          ? this.customerProfile.sampleComments[0]
+          : `Hey! I'm a React.js developer with hands-on internship experience at CodeWebx Technologies. Would love to apply for this remote role! Portfolio: https://my-portfolio-psi-liard-97.vercel.app`);
+
+      const keystrokes = this.keystrokeSynthesizer.synthesizeKeystrokes(commentText);
+      await this.browserClient.dispatchKeystrokeActions(keystrokes);
+      await this.sleep(1000);
+
+      // Submit via Ctrl+Enter and Post click
+      await page.keyboard.down('Control');
+      await page.keyboard.press('Enter');
+      await page.keyboard.up('Control');
+
+      await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('div[role="button"], button'));
+        for (const b of btns) {
+          const t = (b.textContent || '').trim();
+          const rect = b.getBoundingClientRect();
+          if ((t === 'Post' || t === 'Create') && rect.top > 100 && rect.top < 700) {
+            (b as HTMLElement).click();
+            break;
+          }
+        }
+      });
+
+      this.pushLog(`[Operator] ✓ Comment posted successfully to Threads: "${commentText.slice(0, 40)}..."`);
+      this.broadcastTelemetry();
+      return { success: true, message: 'Comment posted successfully!' };
+    } catch (err) {
+      return { success: false, message: (err as Error).message };
+    }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
   }
 }

@@ -1,8 +1,17 @@
 /**
- * index.ts
- * Main entry point for the Autonomous Agentic Social Media Operator.
- * Initializes CDP connection on threads.net, connects to local host Gemini engine,
- * and executes the Observe-Reason-Act-Verify cycle with interactive operator controls.
+ * index.ts  (upgraded)
+ * Main entry point for the Antigravity Autonomous Threads Automation System.
+ *
+ * Boot sequence:
+ * 1. Start the Dashboard Web Server (http://localhost:3000)
+ * 2. Launch Chrome CDP
+ * 3. Connect BrowserClient
+ * 4. Initialize LocalGeminiEngine (Antigravity local host)
+ * 5. Initialize ThreadsOperator
+ * 6. Load saved customer profile (if exists) or wait for dashboard setup
+ * 7. Wait for customer intent approval via dashboard
+ * 8. Start the autonomous operational loop
+ * 9. Keep the CLI console fallback for terminal operators
  */
 
 import dotenv from 'dotenv';
@@ -10,82 +19,117 @@ import { ChromeLauncher } from './launcher/ChromeLauncher.js';
 import { BrowserClient } from './cdp/BrowserClient.js';
 import { LocalGeminiEngine } from './engine/LocalGeminiEngine.js';
 import { ThreadsOperator } from './agent/ThreadsOperator.js';
+import { DashboardServer } from './dashboard/DashboardServer.js';
 import { OperatorConsole } from './dashboard/OperatorConsole.js';
+import fs from 'fs';
+import path from 'path';
+import { CustomerProfile } from './types/CustomerProfile.js';
 
 dotenv.config();
 
-// Global crash resilience: prevent process termination on async blips
+// Global crash resilience
 process.on('uncaughtException', (err) => {
-  console.error('[Resilience] Uncaught Exception caught, continuing operation:', err.message);
+  console.error('[Resilience] Uncaught Exception — continuing operation:', err.message);
 });
-
 process.on('unhandledRejection', (reason) => {
-  console.error('[Resilience] Unhandled Promise Rejection caught, continuing operation:', reason);
+  console.error('[Resilience] Unhandled Rejection — continuing operation:', reason);
 });
 
 async function bootstrap() {
-  console.log('================================================================');
-  console.log('   AUTONOMOUS AGENTIC SOCIAL MEDIA OPERATOR (THREADS.NET)       ');
-  console.log('   Google Antigravity Framework | Native Local Gemini Engine    ');
-  console.log('================================================================\n');
+  console.log('');
+  console.log('╔═══════════════════════════════════════════════════════════════╗');
+  console.log('║   ANTIGRAVITY — AUTONOMOUS THREADS SOCIAL MEDIA OPERATOR      ║');
+  console.log('║   Powered by: Google Antigravity · Local Gemini Engine        ║');
+  console.log('║   Browser Control: Puppeteer CDP · Full Visual Automation     ║');
+  console.log('╚═══════════════════════════════════════════════════════════════╝');
+  console.log('');
 
-  const cdpPort = parseInt(process.env.CDP_PORT || '9222', 10);
-  const geminiHost = process.env.GEMINI_LOCAL_HOST || 'http://localhost:11434';
-  const initialMode = (process.env.INITIAL_MODE || 'FEED') as 'FEED' | 'DM' | 'PROFILE';
+  const cdpPort      = parseInt(process.env.CDP_PORT || '9222', 10);
+  const geminiHost   = process.env.GEMINI_LOCAL_HOST || 'http://localhost:11434';
+  const dashPort     = parseInt(process.env.DASHBOARD_PORT || '3000', 10);
+  const initialMode  = (process.env.INITIAL_MODE || 'FEED') as 'FEED' | 'DM' | 'PROFILE';
 
-  console.log(`[Config] Target CDP Port: ${cdpPort}`);
-  console.log(`[Config] Local Gemini Host: ${geminiHost}`);
-  console.log(`[Config] Initial Operational Mode: ${initialMode}\n`);
+  console.log(`[Config] CDP Port:           ${cdpPort}`);
+  console.log(`[Config] Gemini Host:         ${geminiHost}`);
+  console.log(`[Config] Dashboard Port:      ${dashPort}`);
+  console.log(`[Config] Initial Mode:        ${initialMode}`);
+  console.log('');
 
-  // Step 1: Ensure Chrome with CDP is running
-  console.log('[Bootstrap] Initializing Chrome DevTools Protocol session...');
+  // ── Step 1: Init Chrome CDP ──
+  console.log('[Bootstrap] Ensuring Chrome CDP is running...');
   const chromeReady = await ChromeLauncher.ensureChromeWithCdp(cdpPort);
   if (!chromeReady) {
-    console.warn(
-      `[Bootstrap] Warning: Chrome CDP was not verified on port ${cdpPort}. ` +
-      `Proceeding with connection attempt in case an external instance is running.`
-    );
+    console.warn(`[Bootstrap] Chrome CDP not verified on port ${cdpPort}. Attempting connection anyway...`);
   }
 
-  // Step 2: Connect BrowserClient to CDP
+  // ── Step 2: Connect BrowserClient ──
   const browserClient = new BrowserClient(`http://127.0.0.1:${cdpPort}`);
   const connected = await browserClient.connect();
 
   if (!connected) {
     console.error(
-      `[Bootstrap] Unable to attach to Chrome on port ${cdpPort}.\n` +
-      `Please ensure Chrome is running with:\n` +
+      `[Bootstrap] ✗ Cannot connect to Chrome CDP on port ${cdpPort}.\n` +
+      `  Make sure Chrome is running:\n` +
       `  chrome.exe --remote-debugging-port=${cdpPort} https://www.threads.net\n`
     );
-    console.log('[Bootstrap] Exiting bootstrap.');
     process.exit(1);
   }
+  console.log('[Bootstrap] ✓ Chrome CDP connected.');
 
-  console.log('[Bootstrap] CDP Session established successfully on threads.net.');
+  // ── Step 3: Init Gemini Engine ──
+  const geminiEngine = new LocalGeminiEngine({ hostUrl: geminiHost });
+  console.log('[Bootstrap] ✓ Local Gemini Engine initialized.');
 
-  // Step 3: Initialize Local Gemini Engine
-  const geminiEngine = new LocalGeminiEngine({
-    hostUrl: geminiHost,
-  });
-
-  // Step 4: Initialize Operator and Console
+  // ── Step 4: Init Operator ──
   const operator = new ThreadsOperator(browserClient, geminiEngine, {
     initialMode,
+    cdpPort,
   });
+  console.log('[Bootstrap] ✓ Threads Operator initialized.');
 
-  const consoleUi = new OperatorConsole(operator);
+  // ── Step 5: Start Dashboard Server ──
+  const dashboard = new DashboardServer(operator, dashPort);
+  await dashboard.start();
+  console.log('[Bootstrap] ✓ Dashboard server started at http://localhost:' + dashPort);
+  try {
+    const { exec } = await import('child_process');
+    if (process.platform === 'win32') {
+      exec(`start http://localhost:${dashPort}`);
+    }
+  } catch {}
+
+  // ── Step 6: Load saved customer profile (if any) ──
+  const profilePath = path.resolve(process.cwd(), '.customer-profile.json');
+  if (fs.existsSync(profilePath)) {
+    try {
+      const profile = JSON.parse(fs.readFileSync(profilePath, 'utf-8')) as CustomerProfile;
+      operator.loadCustomerProfile(profile);
+      operator.approveIntent('Auto-approved saved profile');
+      console.log(`[Bootstrap] ✓ Saved profile loaded & approved: ${profile.name} (${profile.profession})`);
+    } catch (err) {
+      console.warn('[Bootstrap] Could not load saved profile:', (err as Error).message);
+    }
+  } else {
+    console.log('[Bootstrap] No saved profile found. Please set up your profile on the dashboard.');
+    console.log(`[Bootstrap] → Open: http://localhost:${dashPort}`);
+  }
+
+  // ── Step 7: Start CLI Console (terminal fallback) ──
+  const consoleUi = new OperatorConsole(operator as any);
   consoleUi.startInteractiveCli();
 
-  // Handle graceful exit
+  // ── Step 8: Handle graceful exit ──
   process.on('SIGINT', async () => {
-    console.log('\n[Bootstrap] Received SIGINT. Shutting down operator...');
+    console.log('\n[Bootstrap] SIGINT received — shutting down gracefully...');
     operator.stop();
     consoleUi.stop();
+    dashboard.stop();
     await browserClient.disconnect();
     process.exit(0);
   });
 
-  // Step 5: Start Autonomous Operational Loop
+  // ── Step 9: Start autonomous loop ──
+  console.log('[Bootstrap] ✓ Starting autonomous operational loop...\n');
   await operator.start();
 }
 

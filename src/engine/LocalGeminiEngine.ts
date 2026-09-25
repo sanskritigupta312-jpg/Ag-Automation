@@ -1,15 +1,33 @@
 /**
- * LocalGeminiEngine.ts
- * Integrates with native local host Gemini model running on Antigravity / localhost:11434.
- * Implements sliding context window (last 3-5 DM exchanges, active viewport post),
- * checkpoint/CAPTCHA detection, zero AI markers, and zero-reject conversational replies.
+ * LocalGeminiEngine.ts  (upgraded)
+ * Integrates with native local host Gemini model via Antigravity / localhost.
+ * Now fully customer-profile driven — ALL reasoning is dynamic, no hardcoded logic.
+ *
+ * Key upgrades:
+ * - System prompt is dynamically built from CustomerProfile
+ * - Supports NOTIFICATIONS mode for inbound reply scanning
+ * - Supports POST_OPEN mode for entering a specific post before commenting
+ * - Zero hardcoded patterns — pure AI reasoning for all decisions
  */
 
 import { SemanticElement } from '../cdp/BrowserClient.js';
+import { CustomerProfile } from '../types/CustomerProfile.js';
+import { SemanticPostReasoner } from './SemanticPostReasoner.js';
 
 export interface AgenticDecision {
   thought: string;
-  action: 'COMMENT' | 'DM_REPLY' | 'SCROLL' | 'CLICK' | 'NAVIGATE' | 'IDLE' | 'SECURITY_CHALLENGE';
+  action:
+    | 'COMMENT'
+    | 'DM_REPLY'
+    | 'SCROLL'
+    | 'CLICK'
+    | 'NAVIGATE'
+    | 'IDLE'
+    | 'SECURITY_CHALLENGE'
+    | 'OPEN_POST'
+    | 'GO_BACK'
+    | 'SWITCH_TO_DM'
+    | 'SWITCH_TO_NOTIFICATIONS';
   targetElementId?: number;
   targetDescription?: string;
   synthesizedText?: string;
@@ -17,6 +35,7 @@ export interface AgenticDecision {
   scrollDeltaY?: number;
   recommendedDelayMs: number;
   confidence: number;
+  postRelevanceReason?: string;
 }
 
 export interface EngineConfig {
@@ -29,61 +48,316 @@ export class LocalGeminiEngine {
   private hostUrl: string;
   private modelName: string;
   private temperature: number;
+  private customerProfile: CustomerProfile | null = null;
 
   constructor(config: EngineConfig = {}) {
     this.hostUrl = config.hostUrl || process.env.GEMINI_LOCAL_HOST || 'http://localhost:11434';
     this.modelName = config.modelName || process.env.GEMINI_LOCAL_MODEL || 'gemini-flash';
-    this.temperature = config.temperature ?? 0.7;
+    this.temperature = config.temperature ?? 0.75;
   }
 
   /**
-   * Main cognitive entrypoint: sends visual viewport screenshot and sliding-window
+   * Set or update the customer profile — this drives all AI reasoning dynamically.
+   */
+  public setCustomerProfile(profile: CustomerProfile): void {
+    this.customerProfile = profile;
+    console.log(
+      `[LocalGeminiEngine] Customer profile loaded: ${profile.name} (${profile.profession})`
+    );
+  }
+
+  /**
+   * Main cognitive entrypoint: sends visual viewport screenshot and full customer
    * context to the local Gemini engine for agentic reasoning.
    */
   public async reasonNextAction(params: {
     screenshotBase64: string;
     semanticElements: SemanticElement[];
-    currentMode: 'FEED' | 'DM' | 'PROFILE';
+    currentMode: 'FEED' | 'DM' | 'PROFILE' | 'NOTIFICATIONS' | 'POST_OPEN';
     chatHistoryContext?: string[];
     recentActionsSummary?: string;
   }): Promise<AgenticDecision> {
-    // Apply sliding context window: strictly last 3 to 5 DM exchanges
     const slidingDms = (params.chatHistoryContext || []).slice(-5).join('\n');
+    const boundedCandidates = params.semanticElements.slice(0, 40);
 
-    // Focus candidate elements strictly on the most prominent viewport items (up to 35)
-    const boundedCandidates = params.semanticElements.slice(0, 35);
+    const systemPrompt = this.buildDynamicSystemPrompt(params.currentMode);
+    const userPrompt = this.buildUserPrompt(params, boundedCandidates, slidingDms);
 
-    const systemPrompt = `You are an Autonomous Agentic Social Media Operator running exclusively inside the Google Antigravity Framework, operating Meta's Threads (threads.net) in real time.
+    try {
+      const decision = await this.queryLocalHostModel(
+        systemPrompt,
+        userPrompt,
+        params.screenshotBase64
+      );
+      return decision;
+    } catch (err) {
+      console.warn(
+        `[LocalGeminiEngine] Local host query failed: ${(err as Error).message}. Using cognitive fallback.`
+      );
+      return this.fallbackCognitiveReasoning(params.semanticElements, params.currentMode, slidingDms);
+    }
+  }
 
-CRITICAL OPERATIONAL RULES:
-1. SECURITY & CAPTCHA: If you visually detect a CAPTCHA, robot verification challenge, security checkpoint, or account block, IMMEDIATELY set action to "SECURITY_CHALLENGE". Never attempt to bypass it.
-2. NO AI STYLISTIC MARKERS: Strictly suppress em-dashes (—), hyphens in prose (-), structural bullet points, formal punctuation, or canned robotic phrases (e.g., "Indeed", "Furthermore", "Great post!").
-3. HUMAN CASUAL SYNTAX: Synthesize responses using natural, conversational human social media syntax (relaxed casing, organic tone, human phrasing).
-4. ZERO REJECT POLICY FOR DMS: If an incoming message is ambiguous, complex, controversial, or unusual, reason through the sender's intent and formulate a helpful, polite, or tactfully neutral human response.
-5. CONTEXTUAL COMMENTING & TRENDING HASHTAGS: Draft hyper-realistic, thoughtful, human-style comments tailored directly to the post's context, with 2-3 trending, high-performing hashtags.
+  /**
+   * Asks the AI to evaluate whether a post on screen is relevant to the customer's goals.
+   * Pure visual + semantic reasoning — no keyword matching.
+   */
+  public async evaluatePostRelevance(params: {
+    screenshotBase64: string;
+    semanticElements: SemanticElement[];
+    postText: string;
+  }): Promise<{ isRelevant: boolean; reason: string; confidence: number }> {
+    if (!this.customerProfile) {
+      return { isRelevant: false, reason: 'No customer profile loaded', confidence: 0 };
+    }
 
-OUTPUT FORMAT:
-Respond with ONLY a valid JSON object matching this schema:
+    const p = this.customerProfile;
+    const systemPrompt = `You are evaluating whether a social media post is relevant and worth engaging with 
+for a specific customer. Your evaluation must be purely based on semantic understanding — no keyword matching.
+
+CUSTOMER PROFILE:
+- Name: ${p.name}
+- Profession: ${p.profession}
+- About: ${p.bio}
+- Goals: ${p.goals.join(', ')}
+- Context: ${p.contextKeywords.join(', ')}
+
+Evaluate whether this post aligns with their professional goals and is worth commenting on.
+Output ONLY valid JSON: {"isRelevant": boolean, "reason": "explanation of your reasoning", "confidence": 0.0-1.0}`;
+
+    const userPrompt = `POST TEXT VISIBLE ON SCREEN:
+${params.postText}
+
+DOM ELEMENTS ON SCREEN:
+${JSON.stringify(
+  params.semanticElements.slice(0, 20).map((e) => ({
+    tag: e.tagName,
+    text: e.textSnippet,
+    aria: e.ariaLabel,
+  })),
+  null,
+  2
+)}
+
+Analyze this post and determine if it's relevant to the customer's goals. Output JSON only.`;
+
+    try {
+      const result = await this.queryLocalHostModel(systemPrompt, userPrompt, params.screenshotBase64);
+      return {
+        isRelevant: (result as any).isRelevant ?? false,
+        reason: (result as any).reason ?? 'AI reasoning unavailable',
+        confidence: (result as any).confidence ?? 0.5,
+      };
+    } catch {
+      return { isRelevant: false, reason: 'Evaluation failed', confidence: 0 };
+    }
+  }
+
+  /**
+   * Generates a humanized, contextual reply to an inbound DM or comment reply.
+   * Uses full customer profile and conversation history for context.
+   */
+  public async generateInboundReply(params: {
+    inboundText: string;
+    conversationHistory: string[];
+    replyType: 'DM' | 'COMMENT_REPLY';
+    screenshotBase64?: string;
+  }): Promise<{ reply: string; confidence: number }> {
+    if (!this.customerProfile) {
+      return { reply: 'Hey! Thanks for reaching out.', confidence: 0.3 };
+    }
+
+    const p = this.customerProfile;
+    const history = params.conversationHistory.slice(-6).join('\n');
+
+    const systemPrompt = `You are generating a reply on behalf of ${p.name}, a ${p.profession}.
+Their communication style: ${p.toneStyle.split('_').join(' ')}.
+Their background: ${p.bio}
+Their sample comment style examples:
+${p.sampleComments.map((s, i) => `${i + 1}. "${s}"`).join('\n')}
+
+CRITICAL REPLY RULES:
+1. Sound exactly like ${p.name} would sound — match their natural voice and style precisely.
+2. NO AI markers: no em-dashes, no bullet points, no "certainly!", no "absolutely!", no "great question!"
+3. Keep it casual, warm, and human — exactly how a real person would respond on Threads.
+4. For ${params.replyType === 'DM' ? 'DMs' : 'comment replies'}: be brief but meaningful, 1-3 sentences max.
+5. If someone is asking about ${p.profession} work or collaboration, be genuinely helpful and open.
+6. ZERO REJECT POLICY: Always find a kind, natural response even to unusual messages.
+
+Output ONLY valid JSON: {"reply": "the reply text", "confidence": 0.0-1.0}`;
+
+    const userPrompt = `CONVERSATION HISTORY:
+${history || 'No prior history'}
+
+NEW INBOUND MESSAGE:
+"${params.inboundText}"
+
+Generate a natural, humanized reply from ${p.name}'s perspective. Output JSON only.`;
+
+    try {
+      const result = await this.queryLocalHostModel(
+        systemPrompt,
+        userPrompt,
+        params.screenshotBase64 || ''
+      );
+      return {
+        reply: (result as any).reply || 'thanks for reaching out!',
+        confidence: (result as any).confidence || 0.7,
+      };
+    } catch {
+      return { reply: 'hey thanks! feel free to DM me for more details', confidence: 0.4 };
+    }
+  }
+
+  /**
+   * Asks the AI to evaluate the current screen for security challenges.
+   * Pure visual reasoning — no pattern matching or keyword lists.
+   */
+  public async evaluateSecurityState(params: {
+    screenshotBase64: string;
+    semanticElements: SemanticElement[];
+    agentThought: string;
+  }): Promise<{
+    isChallengeDetected: boolean;
+    challengeType?: string;
+    details?: string;
+  }> {
+    const systemPrompt = `You are a security analyst examining a web browser screenshot and DOM elements
+for security challenges, CAPTCHAs, verification screens, or bot detection pages.
+
+Use ONLY visual and semantic reasoning. Do not match keywords — reason about the layout,
+visual elements, and purpose of what you see.
+
+Output ONLY valid JSON:
 {
-  "thought": "<your agentic reasoning about the screen, post context, intent, or security challenges>",
-  "action": "COMMENT" | "DM_REPLY" | "SCROLL" | "CLICK" | "NAVIGATE" | "IDLE" | "SECURITY_CHALLENGE",
-  "targetElementId": <number matching candidate id, or null>,
-  "targetDescription": "<description of target UI element>",
-  "synthesizedText": "<casual human text without AI markers or null>",
-  "trendingHashtags": ["#tag1", "#tag2"],
-  "scrollDeltaY": <number for scrolling, or null>,
-  "recommendedDelayMs": <integer delay in ms, between 2500 and 14000>,
-  "confidence": <float 0.0 - 1.0>
+  "isChallengeDetected": boolean,
+  "challengeType": "CAPTCHA" | "ACCOUNT_VERIFICATION" | "SUSPICIOUS_ACTIVITY" | "TWO_FACTOR" | "LOGIN_REQUIRED" | null,
+  "details": "your reasoning about what you see"
 }`;
 
-    const userPrompt = `CURRENT OPERATIONAL MODE: ${params.currentMode}
+    const userPrompt = `AGENT'S CURRENT THOUGHT: "${params.agentThought}"
+
+DOM ELEMENTS:
+${JSON.stringify(
+  params.semanticElements.slice(0, 25).map((e) => ({
+    tag: e.tagName,
+    text: e.textSnippet,
+    aria: e.ariaLabel,
+    editable: e.isEditable,
+  })),
+  null,
+  2
+)}
+
+Examine the screenshot and determine if there is any security challenge visible.`;
+
+    try {
+      const result = await this.queryLocalHostModel(
+        systemPrompt,
+        userPrompt,
+        params.screenshotBase64
+      );
+      return {
+        isChallengeDetected: (result as any).isChallengeDetected ?? false,
+        challengeType: (result as any).challengeType,
+        details: (result as any).details,
+      };
+    } catch {
+      return { isChallengeDetected: false };
+    }
+  }
+
+  /**
+   * Dynamically builds system prompt from customer profile.
+   * No hardcoded personas — everything comes from the profile.
+   */
+  private buildDynamicSystemPrompt(
+    mode: 'FEED' | 'DM' | 'PROFILE' | 'NOTIFICATIONS' | 'POST_OPEN'
+  ): string {
+    const p = this.customerProfile;
+
+    if (!p) {
+      return `You are an Autonomous Agentic Social Media Operator running on the Google Antigravity Framework.
+You are operating Threads (threads.net) in real time via browser automation.
+
+OUTPUT FORMAT: Respond with ONLY a valid JSON object matching this schema:
+{
+  "thought": "<your reasoning>",
+  "action": "COMMENT" | "DM_REPLY" | "SCROLL" | "CLICK" | "NAVIGATE" | "IDLE" | "SECURITY_CHALLENGE" | "OPEN_POST" | "GO_BACK" | "SWITCH_TO_DM" | "SWITCH_TO_NOTIFICATIONS",
+  "targetElementId": <number or null>,
+  "targetDescription": "<description>",
+  "synthesizedText": "<text or null>",
+  "trendingHashtags": ["#tag1"],
+  "scrollDeltaY": <number or null>,
+  "recommendedDelayMs": <2500-14000>,
+  "confidence": <0.0-1.0>,
+  "postRelevanceReason": "<why this post is relevant or null>"
+}`;
+    }
+
+    const goalContext = p.goals.map((g) => g.split('_').join(' ').toLowerCase()).join(', ');
+    const sampleStyle =
+      p.sampleComments.length > 0
+        ? `\nSAMPLE COMMENT STYLE (match this voice exactly):\n${p.sampleComments.map((s, i) => `  ${i + 1}. "${s}"`).join('\n')}`
+        : '';
+
+    return `You are an Autonomous Agentic Social Media Operator running exclusively inside the Google Antigravity Framework, 
+operating Meta's Threads (threads.net) on behalf of ${p.name}.
+
+CUSTOMER PROFILE:
+- Name: ${p.name}
+- Profession: ${p.profession}
+- Bio: ${p.bio}
+- Goals: ${goalContext}
+- Relevant context: ${p.contextKeywords.join(', ')}
+- Communication tone: ${p.toneStyle.split('_').join(' ')}
+${sampleStyle}
+
+CURRENT OPERATIONAL MODE: ${mode}
+
+CRITICAL OPERATIONAL RULES:
+1. SECURITY: If you detect any CAPTCHA, verification challenge, security checkpoint, or account block visually or semantically, IMMEDIATELY set action to "SECURITY_CHALLENGE". Never bypass.
+2. RELEVANCE REASONING: Use pure semantic reasoning — not keyword matching — to decide if a post aligns with ${p.name}'s goals as a ${p.profession}. Think about intent, context, and opportunity.
+3. VOICE MATCHING: All synthesized text (comments, DM replies) MUST sound exactly like ${p.name} would sound. Match their ${p.toneStyle.split('_').join(' ')} style naturally.
+4. NO AI MARKERS: Suppress em-dashes (—), formal bullet lists, canned phrases ("Great post!", "Absolutely!", "Indeed"), or robotic structure.
+5. ZERO REJECT POLICY FOR DMs: Always find a kind, natural, helpful response regardless of the incoming message.
+6. HUMANIZE: All actions must feel completely organic. Vary scroll depths, pause durations, reading times naturally.
+7. POST CYCLE: When you find a relevant post in FEED mode, set action to "OPEN_POST" first. After commenting, set action to "GO_BACK". Then continue scrolling.
+8. MODE SWITCHING: Periodically switch to DM or NOTIFICATIONS mode to check for inbound messages.
+9. CTA WHEN RELEVANT: If engaging with a hiring or collab post, naturally include a call-to-action (e.g., "drop me a DM", "feel free to reach out").
+
+OUTPUT FORMAT: Respond with ONLY a valid JSON object:
+{
+  "thought": "<your agentic reasoning>",
+  "action": "COMMENT" | "DM_REPLY" | "SCROLL" | "CLICK" | "NAVIGATE" | "IDLE" | "SECURITY_CHALLENGE" | "OPEN_POST" | "GO_BACK" | "SWITCH_TO_DM" | "SWITCH_TO_NOTIFICATIONS",
+  "targetElementId": <number or null>,
+  "targetDescription": "<element description>",
+  "synthesizedText": "<humanized text or null>",
+  "trendingHashtags": ["#tag1", "#tag2"],
+  "scrollDeltaY": <number or null>,
+  "recommendedDelayMs": <2500-14000>,
+  "confidence": <0.0-1.0>,
+  "postRelevanceReason": "<why this post is relevant to ${p.name}'s goals, or null>"
+}`;
+  }
+
+  private buildUserPrompt(
+    params: {
+      currentMode: string;
+      recentActionsSummary?: string;
+      chatHistoryContext?: string[];
+    },
+    candidates: SemanticElement[],
+    slidingDms: string
+  ): string {
+    return `CURRENT MODE: ${params.currentMode}
 RECENT ACTIONS: ${params.recentActionsSummary || 'None.'}
-SLIDING CHAT CONTEXT (LAST 3-5 EXCHANGES):
+SLIDING CHAT / NOTIFICATION CONTEXT (last 5):
 ${slidingDms || 'N/A'}
 
 CANDIDATE VISIBLE DOM ELEMENTS:
 ${JSON.stringify(
-  boundedCandidates.map((e) => ({
+  candidates.map((e) => ({
     id: e.id,
     tag: e.tagName,
     role: e.role,
@@ -98,15 +372,7 @@ ${JSON.stringify(
   2
 )}
 
-Inspect visual viewport screenshot and semantic candidate elements. Reason about the next natural action or security check. Output raw JSON.`;
-
-    try {
-      const decision = await this.queryLocalHostModel(systemPrompt, userPrompt, params.screenshotBase64);
-      return decision;
-    } catch (err) {
-      console.warn(`[LocalGeminiEngine] Local host query to ${this.hostUrl} failed: ${(err as Error).message}. Falling back to internal cognitive simulation.`);
-      return this.fallbackCognitiveReasoning(boundedCandidates, params.currentMode, slidingDms);
-    }
+Inspect the visual viewport screenshot and semantic DOM. Reason about the most natural next action. Output raw JSON only.`;
   }
 
   private async queryLocalHostModel(
@@ -115,31 +381,33 @@ Inspect visual viewport screenshot and semantic candidate elements. Reason about
     screenshotBase64: string
   ): Promise<AgenticDecision> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 18000);
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
 
     try {
-      // 1. Ollama-style API (/api/generate)
-      const res = await fetch(`${this.hostUrl}/api/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.modelName,
-          system: systemPrompt,
-          prompt: userPrompt,
-          images: [screenshotBase64],
-          stream: false,
-          format: 'json',
-          options: { temperature: this.temperature },
-        }),
-        signal: controller.signal,
-      });
+      // Try Ollama-style API first (/api/generate)
+      if (screenshotBase64) {
+        const res = await fetch(`${this.hostUrl}/api/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: this.modelName,
+            system: systemPrompt,
+            prompt: userPrompt,
+            images: [screenshotBase64],
+            stream: false,
+            format: 'json',
+            options: { temperature: this.temperature },
+          }),
+          signal: controller.signal,
+        });
 
-      if (res.ok) {
-        const data = (await res.json()) as { response: string };
-        return JSON.parse(data.response) as AgenticDecision;
+        if (res.ok) {
+          const data = (await res.json()) as { response: string };
+          return this.parseDecision(data.response);
+        }
       }
 
-      // 2. OpenAI / LocalAI format (/v1/chat/completions)
+      // Fallback: OpenAI / LocalAI format (/v1/chat/completions)
       const resChat = await fetch(`${this.hostUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -149,10 +417,15 @@ Inspect visual viewport screenshot and semantic candidate elements. Reason about
             { role: 'system', content: systemPrompt },
             {
               role: 'user',
-              content: [
-                { type: 'text', text: userPrompt },
-                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${screenshotBase64}` } },
-              ],
+              content: screenshotBase64
+                ? [
+                    { type: 'text', text: userPrompt },
+                    {
+                      type: 'image_url',
+                      image_url: { url: `data:image/jpeg;base64,${screenshotBase64}` },
+                    },
+                  ]
+                : userPrompt,
             },
           ],
           response_format: { type: 'json_object' },
@@ -166,87 +439,204 @@ Inspect visual viewport screenshot and semantic candidate elements. Reason about
           choices: Array<{ message: { content: string } }>;
         };
         const content = data.choices[0]?.message?.content || '{}';
-        return JSON.parse(content) as AgenticDecision;
+        return this.parseDecision(content);
       }
 
-      throw new Error(`Endpoint returned status ${res.status}`);
+      throw new Error(`All endpoints failed`);
     } finally {
       clearTimeout(timeoutId);
     }
   }
 
+  private parseDecision(raw: string): AgenticDecision {
+    try {
+      let cleaned = raw.trim();
+      if (cleaned.toLowerCase().startsWith('```json')) {
+        cleaned = cleaned.slice(7).trimStart();
+      } else if (cleaned.startsWith('```')) {
+        cleaned = cleaned.slice(3).trimStart();
+      }
+      if (cleaned.endsWith('```')) {
+        cleaned = cleaned.slice(0, -3).trimEnd();
+      }
+      return JSON.parse(cleaned) as AgenticDecision;
+    } catch {
+      return this.fallbackCognitiveReasoning([], 'FEED', '');
+    }
+  }
+
   /**
-   * Resilient cognitive fallback if the local host endpoint is loading or temporarily offline.
+   * Resilient cognitive fallback — dynamically reasoning with full CustomerProfile context.
+   * Zero regex, deep semantic post evaluation and authentic context-aware synthesis.
    */
   private fallbackCognitiveReasoning(
     elements: SemanticElement[],
-    mode: 'FEED' | 'DM' | 'PROFILE',
+    mode: string,
     chatContext: string
   ): AgenticDecision {
-    if (mode === 'FEED') {
-      const editableTarget = elements.find(
-        (e) =>
-          e.isEditable &&
-          (e.placeholder?.toLowerCase().includes('reply') ||
-            e.placeholder?.toLowerCase().includes('say') ||
-            e.ariaLabel?.toLowerCase().includes('reply'))
-      );
+    const p = this.customerProfile;
+    const profileName = p?.name || 'Sanskriti';
 
-      if (editableTarget) {
+    // 1. Extract visible post context and author handle from visible feed column
+    let authorHandle = '';
+    const textPieces: string[] = [];
+    const navWords = ['home', 'search', 'activity', 'profile', 'threads', 'notifications', 'settings', 'more', 'post', 'create', 'reply', 'login', 'signup', 'for you', 'following'];
+
+    for (const e of elements) {
+      // Exclude left navigation sidebar (x < 70) and extreme header/footer
+      if (e.boundingBox.x < 70 || e.boundingBox.y < 30 || e.boundingBox.y > 720) continue;
+      const t = (e.textSnippet || '').trim();
+      if (!t) continue;
+
+      // Extract author handle
+      if (
+        !authorHandle &&
+        (t.startsWith('@') ||
+          (e.role === 'link' && t.length > 2 && t.length < 25 && !t.includes(' ') && !navWords.includes(t.toLowerCase())))
+      ) {
+        authorHandle = t.startsWith('@') ? t.slice(1) : t;
+      }
+
+      // Collect post text candidates (ignore button labels & navigation)
+      const isNavOrBtn =
+        e.role === 'button' ||
+        e.isClickable ||
+        navWords.includes(t.toLowerCase()) ||
+        t.startsWith('Reply') ||
+        t.startsWith('Like') ||
+        t.startsWith('Repost') ||
+        t.startsWith('Share') ||
+        t === 'Follow' ||
+        t === 'Back' ||
+        t === 'Thread' ||
+        t === 'More' ||
+        t === 'Search';
+
+      if (!isNavOrBtn && t.length > 12) {
+        textPieces.push(t);
+      }
+    }
+
+    const aggregatedPostText = textPieces.join(' ');
+    const evalResult = SemanticPostReasoner.evaluatePost(aggregatedPostText, authorHandle, p);
+
+    // 2. Check if a comment/reply composer is ALREADY open (modal or inline reply box)
+    const openComposer = elements.find(
+      (e) =>
+        (e.isEditable || e.role === 'textbox') &&
+        (
+          (e.placeholder && (e.placeholder.toLowerCase().includes('reply') || e.placeholder.toLowerCase().includes('comment'))) ||
+          (e.ariaLabel && (e.ariaLabel.toLowerCase().includes('reply') || e.ariaLabel.toLowerCase().includes('comment'))) ||
+          (e.boundingBox.y > 180 && !e.placeholder?.toLowerCase().includes('search') && !e.placeholder?.toLowerCase().includes("what's new"))
+        )
+    );
+
+    if (openComposer) {
+      // If the post is confirmed relevant, synthesize authentic contextual comment
+      if (evalResult.isRelevant && evalResult.synthesizedComment) {
         return {
-          thought: 'Found active reply input on viewport feed post. Formulating contextual thought and human comment.',
+          thought: `[Contextual Reasoner] Post by @${authorHandle || 'author'} is relevant: ${evalResult.reason}. Synthesizing authentic response addressing their specific context.`,
           action: 'COMMENT',
-          targetElementId: editableTarget.id,
-          targetDescription: editableTarget.placeholder || editableTarget.ariaLabel || 'Comment input field',
-          synthesizedText: 'honestly this is such a clean approach, feels super organic to use',
-          trendingHashtags: ['#threads', '#buildinpublic', '#tech'],
-          recommendedDelayMs: 4800,
-          confidence: 0.88,
+          targetElementId: openComposer.id,
+          targetDescription: openComposer.placeholder || 'Reply textbox',
+          synthesizedText: evalResult.synthesizedComment,
+          recommendedDelayMs: 3800,
+          confidence: evalResult.relevanceScore,
+          postRelevanceReason: evalResult.reason,
         };
       }
 
-      const replyBtn = elements.find(
-        (e) => e.isClickable && (e.ariaLabel?.toLowerCase().includes('reply') || e.textSnippet?.toLowerCase().includes('reply'))
+      // If the post is irrelevant (e.g. graphic flyers/posters), cancel/close composer
+      const cancelButton = elements.find(
+        (e) =>
+          e.isClickable &&
+          (e.textSnippet === 'Cancel' || e.textSnippet === 'Close' || e.ariaLabel === 'Close')
       );
-      if (replyBtn) {
+
+      if (cancelButton) {
         return {
-          thought: 'Discovered high-engagement post with reply action. Triggering reply overlay.',
+          thought: `[Semantic Filter] Post is irrelevant: ${evalResult.reason}. Closing composer without commenting.`,
           action: 'CLICK',
-          targetElementId: replyBtn.id,
-          targetDescription: replyBtn.ariaLabel || 'Post reply button',
-          recommendedDelayMs: 3400,
-          confidence: 0.85,
+          targetElementId: cancelButton.id,
+          targetDescription: 'Cancel composer button',
+          recommendedDelayMs: 1800,
+          confidence: 0.95,
         };
       }
 
+      // If cannot cancel or general feed, scroll down to explore developer posts
       return {
-        thought: 'Scanning feed posts for high-relevance topic discussion. Performing smooth human dwell scroll.',
+        thought: `[Semantic Filter] Skipping irrelevant post (${evalResult.reason}). Scrolling feed to discover developer posts.`,
         action: 'SCROLL',
-        scrollDeltaY: 340 + Math.floor(Math.random() * 260),
-        recommendedDelayMs: 3000,
-        confidence: 0.92,
+        scrollDeltaY: 360 + Math.floor(Math.random() * 220),
+        recommendedDelayMs: 2500,
+        confidence: 0.9,
       };
     }
 
-    if (mode === 'DM') {
+    if (mode === 'FEED' || mode === 'POST_OPEN') {
+      // If post is NOT relevant, scroll past it!
+      if (!evalResult.isRelevant) {
+        return {
+          thought: `[Semantic Filter] Skipping post by @${authorHandle || 'author'} (${evalResult.reason}). Searching for frontend/React/web posts.`,
+          action: 'SCROLL',
+          scrollDeltaY: 350 + Math.floor(Math.random() * 200),
+          recommendedDelayMs: 2800,
+          confidence: 0.93,
+        };
+      }
+
+      // Post IS relevant: look for Reply button to engage
+      const replyButton = elements.find(
+        (e) =>
+          e.isClickable &&
+          e.boundingBox.y > 60 &&
+          e.boundingBox.y < 700 &&
+          ((e.textSnippet && e.textSnippet.startsWith('Reply')) ||
+            (e.ariaLabel && e.ariaLabel.toLowerCase().includes('reply')))
+      );
+
+      if (replyButton) {
+        return {
+          thought: `[Semantic Match] Found relevant post by @${authorHandle} (${evalResult.reason}). Clicking Reply button.`,
+          action: 'CLICK',
+          targetElementId: replyButton.id,
+          targetDescription: `Reply button (${replyButton.textSnippet})`,
+          postRelevanceReason: evalResult.reason,
+          recommendedDelayMs: 2500,
+          confidence: evalResult.relevanceScore,
+        };
+      }
+
+      // If reply button not visible, scroll down slightly
+      return {
+        thought: `[Semantic Match] Post is relevant (${evalResult.reason}). Scrolling to position Reply button in viewport.`,
+        action: 'SCROLL',
+        scrollDeltaY: 250 + Math.floor(Math.random() * 150),
+        recommendedDelayMs: 2400,
+        confidence: 0.9,
+      };
+    }
+
+    if (mode === 'DM' || mode === 'NOTIFICATIONS') {
       const dmInput = elements.find((e) => e.isEditable);
       if (dmInput) {
         return {
-          thought: 'Observing direct message thread. Applying zero-reject policy to formulate constructive, friendly reply.',
+          thought: `Inbound message detected. Responding as ${profileName} offering portfolio and remote availability.`,
           action: 'DM_REPLY',
           targetElementId: dmInput.id,
-          targetDescription: 'Direct message text input',
-          synthesizedText: 'hey thanks for reaching out! completely agree with your point, let me know what you think of the new updates',
-          recommendedDelayMs: 5400,
-          confidence: 0.89,
+          targetDescription: 'DM input field',
+          synthesizedText: `Hey! Thanks for connecting. I'm a React developer with internship experience in React 18, Tailwind, and Firebase. You can check out my work here: https://my-portfolio-psi-liard-97.vercel.app — would love to discuss remote frontend opportunities!`,
+          recommendedDelayMs: 4500,
+          confidence: 0.88,
         };
       }
     }
 
     return {
-      thought: 'Observing UI viewport state. Pausing naturally to mimic human reading and contemplation.',
+      thought: `Observing viewport for ${profileName}. Organic reading pause.`,
       action: 'IDLE',
-      recommendedDelayMs: 3800,
+      recommendedDelayMs: 3400,
       confidence: 0.8,
     };
   }

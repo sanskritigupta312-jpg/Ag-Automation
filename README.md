@@ -1,116 +1,278 @@
-# Autonomous Agentic Social Media Operator (`threads.net`)
+# 🤖 Antigravity — Autonomous Threads Social Media Automation
 
-An Autonomous Agentic Social Media Operator running exclusively inside the **Google Antigravity Framework**, powered by its native local host Gemini model. It visually inspects, reasons over, and operates Meta's Threads (`threads.net`) in real time via Puppeteer and Chrome DevTools Protocol (CDP port 9222).
-
----
-
-## Architectural Principles & Advanced Anti-Ban Protocols
-
-### 1. Pure Agentic Reasoning (Zero Hardcoding & Zero Regex)
-- **Visual & Semantic DOM Reasoning**: Elements (comment inputs, reply buttons, send actions, scroll areas) are located dynamically on every cycle by sending the viewport screenshot and semantic DOM candidates directly to the Local Gemini Engine.
-- **Zero Regex & Fixed Selectors**: No hardcoded CSS selectors, XPaths, or static string matching rules.
-- **Zero Reject Policy for DMs**: In multi-turn conversations and incoming DMs, ambiguous, controversial, or complex messages are analyzed for underlying intent and answered with helpful, polite, and tactfully neutral human responses.
-
-### 2. Visual Fallback & Shadow DOM Resilience
-- **No Reliance on Dynamic Hashed Classes**: Avoids brittle, obfuscated CSS classes (e.g. `_a9--`).
-- **Recursive Shadow DOM Traversal**: Transparently traverses open Shadow DOM roots and light DOM trees, inspecting visual bounding contours, ARIA semantics, SVG contours, and text boundaries.
-
-### 3. Checkpoint, CAPTCHA & Zero-Bypass Session Protocol
-- **Zero Automated Bypass**: Continuous visual and DOM scanning for CAPTCHAs, bot challenges, account verification dialogues, or suspicious activity checkpoints.
-- **Emergency Pause & Notification**: On detection of any security challenge, all active CDP actions are immediately paused, cookies and localStorage are preserved to disk, and a high-priority alert (terminal bell + console guidance) requests human manual intervention.
-- **State Persistence**: Maintains active cookies, localStorage, and persistent session profiles in `.chrome-session-profile` to eliminate unnecessary login triggers.
-
-### 4. Memory Optimization & 2-Hour Runtime Reload Lifecycle
-- **Sliding Context Window**: Prompts strictly pass the last 3–5 DM exchanges and clamp DOM candidates strictly to the active viewport post to maintain low latency and conserve local memory.
-- **2-Hour Graceful Browser Reload**: Tracks runtime health. Every 2 hours of infinite scrolling, safely exports cookies/storage, restarts the browser instance, and re-attaches CDP to avoid memory exhaustion.
-
-### 5. Real-Time Trend Injection
-- Dynamically identifies post niches (Tech, AI, UI Design, Startups, Finance, Lifestyle) and injects 2–3 active, high-converting trending hashtags into synthesized comments.
-
-### 6. Human Mimicry & Click/Sight Alignment Dynamics
-- **Safe 20%–80% Inner Pad Targeting**: Analyzes target bounding boxes and picks dynamic inner coordinates strictly inside a 20%–80% pad. Never clicks static coordinates or element centers.
-- **Sight-Alignment Pauses**: Introduces natural eye-gaze contemplation pauses (350ms to 1400ms) prior to dispatching clicks.
-- **Organic Bézier Trajectories**: Cursor movements follow non-linear Cubic Bézier curves with natural wrist arcs, velocity easing, subpixel tremors, and micro-overshoots.
-- **Human Keystroke Variation & AI Marker Suppression**:
-  - Typing speed: 45ms to 180ms per character with log-normal distribution.
-  - Thinking pauses: 250ms to 650ms after punctuation and phrase boundaries.
-  - Typo simulation: strikes adjacent keys on QWERTY layout, pauses, triggers backspace, and types the intended character.
-  - AI Stylistic Marker Suppression: Completely strips em-dashes (`—`), hyphens in regular prose (` - `), robotic bullet lists, and canned robotic openings (e.g., "Indeed", "Furthermore").
-
-### 7. Conservative Rate Limits & Operational Breaks
-- **Hourly Execution Caps**: Maximum 8–12 comments/hour, 4–6 DMs/hour.
-- **Operational Breaks**: Automatic 20–45 minute cool-down rest periods after every 4–6 productive actions.
-- **Passive Browsing Lingers**: 5–12 seconds dwell contemplation on posts to emulate authentic human reading behavior.
+> **100% Agent-to-Agent · No External APIs · Powered by Local Gemini (Antigravity)**
+> 
+> A fully humanized, AI-driven automation system for **Threads.net** — controlled via a premium web dashboard, operated by a local Gemini model running through Antigravity, with real browser control via Puppeteer CDP.
 
 ---
 
-## Directory Structure
+## ✨ What This Does
+
+The automation works **on your behalf** based on your profile:
+
+| Action | Description |
+|---|---|
+| 🔍 **Feed Scroll** | Smoothly scrolls the Threads feed with human timing |
+| 🎯 **Post Discovery** | AI visually identifies posts relevant to YOUR goals (no keyword matching) |
+| 📖 **Post Opening** | Clicks into relevant posts to read and engage |
+| 💬 **Comment Posting** | Posts natural, personalized comments in YOUR voice |
+| ✅ **Comment Verification** | Verifies the comment was posted successfully |
+| ↩️ **Reply to Replies** | Monitors notifications and replies to comment replies on your behalf |
+| ✉️ **DM Replies** | Reads and replies to your DMs in a humanized, conversational way |
+| 🛡️ **Security Detection** | Detects CAPTCHAs and verification challenges via AI vision — immediately pauses |
+| 🔄 **Continuous Loop** | Back to feed → scroll → repeat, continuously |
+
+**100% humanized** — Bézier cursor paths, variable typing speed, realistic scroll physics, circadian-aware timing.
+
+---
+
+## 🏗️ Architecture
 
 ```
-Ag-Automation/
-├── src/
-│   ├── cdp/
-│   │   └── BrowserClient.ts         # CDP connection, Shadow DOM traversal, sight pause & inputs
-│   ├── engine/
-│   │   └── LocalGeminiEngine.ts     # Localhost Gemini cognitive engine with sliding context window
-│   ├── humanizer/
-│   │   ├── CursorPhysics.ts         # Bézier curves, 20%-80% inner pad, sight alignment pause
-│   │   ├── KeystrokeSynthesizer.ts  # Humanized typing latency, typo corrections, marker suppression
-│   │   └── RhythmManager.ts         # Rate limits (8-12 comments, 4-6 DMs), 20-45m breaks, lingers
-│   ├── security/
-│   │   └── CheckpointDetector.ts    # CAPTCHA / checkpoint detection & zero-bypass alert
-│   ├── session/
-│   │   └── SessionManager.ts        # Persistent cookies/storage & 2-hour reload lifecycle
-│   ├── trend/
-│   │   └── TrendInjector.ts         # Dynamic niche deduction & real-time trending hashtag generation
-│   ├── agent/
-│   │   ├── ObserveReasonActLoop.ts  # OODA workflow loop (Observe -> Reason -> Act -> Verify)
-│   │   └── ThreadsOperator.ts       # High-level coordinator (Feed, DMs, Profiles, Memory)
-│   ├── dashboard/
-│   │   └── OperatorConsole.ts       # Interactive CLI console for real-time operator control
-│   ├── launcher/
-│   │   └── ChromeLauncher.ts        # Windows Chrome auto-detector and CDP launcher
-│   └── index.ts                     # Main entrypoint
-├── test/
-│   ├── humanizer.test.ts            # Humanizer test suite (49 assertions)
-│   └── advanced_protocols.test.ts   # Advanced safety & anti-ban test suite (96 assertions)
-├── package.json
-└── tsconfig.json
+src/
+├── agent/
+│   ├── ObserveReasonActLoop.ts     ← Full OODA cycle (Observe→Reason→Act→Verify)
+│   ├── ThreadsOperator.ts           ← Main coordinator + profile-driven logic
+│   └── InboundMonitor.ts            ← Parallel DM + notification scanner
+├── cdp/
+│   └── BrowserClient.ts             ← Puppeteer CDP (real browser control)
+├── dashboard/
+│   ├── DashboardServer.ts           ← Express + WebSocket server
+│   ├── OperatorConsole.ts           ← Terminal CLI fallback
+│   └── web/
+│       ├── index.html               ← Customer dashboard UI
+│       ├── style.css                ← Premium dark glassmorphism design
+│       └── dashboard.js             ← Live WebSocket client
+├── engine/
+│   └── LocalGeminiEngine.ts         ← AI reasoning (local Gemini via Antigravity)
+├── humanizer/
+│   ├── CursorPhysics.ts             ← Bézier mouse trajectories
+│   ├── KeystrokeSynthesizer.ts      ← Human-like typing with typos
+│   └── RhythmManager.ts             ← Rate limits + circadian timing
+├── intent/
+│   └── IntentInterviewer.ts         ← Pre-op intent builder for customer approval
+├── monitor/
+│   └── AgentMonitor.ts              ← 30s health ping + stall detection
+├── security/
+│   └── CheckpointDetector.ts        ← AI-only CAPTCHA/challenge detection
+├── session/
+│   └── SessionManager.ts            ← Cookie/localStorage persistence
+├── types/
+│   └── CustomerProfile.ts           ← All customer profile + telemetry types
+└── index.ts                         ← Boot entry point
 ```
 
 ---
 
-## Quickstart
+## ⚙️ Prerequisites
 
-### 1. Launch Chrome with CDP
-Run the auto-launcher to launch Chrome with remote debugging on port 9222:
+| Requirement | Version | Notes |
+|---|---|---|
+| Node.js | v18+ | Runtime environment |
+| Google Chrome | Any recent version | Visual browser automation target |
+| Antigravity Engine | Integrated | Built-in Gemini cognitive reasoning |
+
+---
+
+## 🚀 Setup & Running
+
+### Step 1 — Install Dependencies
+
 ```bash
-npm run launch-chrome
-```
-*(Or launch manually: `chrome.exe --remote-debugging-port=9222 --user-data-dir=.chrome-session-profile https://www.threads.net`)*
-
-### 2. Run Comprehensive Test Suites (145 tests)
-```bash
-npm test
+npm install
 ```
 
-### 3. Start the Autonomous Operator
+### Step 2 — Start the Automation & Dashboard
+
 ```bash
 npm start
 ```
 
+That's it! `npm start` automatically:
+1. Detects and launches Google Chrome with CDP enabled (`port 9222`)
+2. Connects the Puppeteer CDP visual automation pipeline
+3. Activates the Antigravity Gemini cognitive engine
+4. Launches the real-time Glassmorphism Web Dashboard at:
+
+👉 **http://localhost:3000**
+
 ---
 
-## Interactive Operator Console Commands
+### Step 3 — Open Dashboard in Browser
 
-While running, the operator responds in real time to the following commands in the terminal:
+1. Navigate to `http://localhost:3000`
+2. **Setup Profile**: Fill in your customer identity, profession, tone, and goals
+3. **Review Intent**: Inspect and approve the AI-generated session action plan
+4. **Live Monitor**: Watch the agent execute humanized feed scrolls, post discovery, and contextual comments in real time!
 
-| Command | Action |
-| :--- | :--- |
-| `pause` | Temporarily suspends automated actions and preserves state |
-| `resume` | Resumes automated actions after manual review |
-| `mode feed` | Switches to feed discovery & contextual commenting |
-| `mode dm` | Switches to inbox inspection and zero-reject replies |
-| `target @username` | Navigates directly to a target user profile |
-| `status` | Displays live telemetry (interactions, rate limits, cool-down, uptime) |
-| `exit` | Gracefully halts the operator, preserves state, and releases CDP |
+---
+
+## 🖥️ Dashboard Usage
+
+### 1. Setup Profile (First Time)
+
+Fill in your profile on the **Setup Profile** tab:
+
+- **Your Name** — How the AI refers to you
+- **Profession** — e.g., "Frontend Developer", "UI Designer", "Copywriter"
+- **Bio** — 1-3 sentences about yourself and what you do
+- **Platform** — Threads (LinkedIn, X coming soon)
+- **Goals** — Select what you want automated:
+  - Find & Comment on Relevant Posts
+  - Find Job/Hiring Posts
+  - Reply to Comment Replies
+  - Reply to DMs
+  - Network Building
+  - Find Collaboration Opportunities
+  - Brand Awareness
+- **Communication Tone** — Casual, Professional, Technical, Creative, Empathetic, Confident
+- **Context Keywords** — Topics relevant to you (helps AI's reasoning, NOT regex)
+- **Sample Comments** — Write 2-3 comments in your own voice (AI learns your style)
+- **Active Hours** — When the automation should be most active
+- **Rate Limits** — Max comments and DMs per hour
+
+Click **Save Profile & Generate Plan** → moves to Intent Review.
+
+### 2. Intent Review (Before Each Session)
+
+The AI builds a human-readable plan of exactly what it's going to do and asks for your approval.
+
+Example:
+> *"Hey Sanskriti! I'm ready to start. Here's what I'm planning to do:*
+> *1. Scroll through the Threads feed and use AI reasoning to identify hiring/collab posts relevant to you as a Frontend Developer.*
+> *2. Comment on relevant posts in your friendly-technical tone...*
+> *3. Check DMs every 5 minutes and reply..."*
+
+Review → optionally add notes → click **Approve & Start**.
+
+### 3. Live Monitor
+
+Real-time view while automation runs:
+
+- **Status indicator** — Running (green pulse) / Paused (amber) / Alert (red)
+- **Mode switcher** — Switch between Feed / DM / Notifications
+- **Stats** — Cycles, Comments, DMs, Scrolls, Uptime
+- **Live log** — Real-time stream of everything the agent is doing
+- **Controls** — Pause / Resume / Stop
+
+### 4. Analytics
+
+Session statistics and rate limit capacity bars.
+
+---
+
+## 🛡️ Anti-Detection & Safety
+
+| Feature | Implementation |
+|---|---|
+| **Mouse Movement** | Cubic Bézier curves with natural wrist arc + micro-tremors |
+| **Click Targeting** | Randomized point within 20%-80% safe inner pad (never dead center) |
+| **Typing Speed** | Variable 40-220ms delays + occasional backspace corrections |
+| **Scroll** | Smooth micro-scroll wheel steps with jitter |
+| **Rate Limits** | 8-12 comments/hr, 4-6 DMs/hr (configurable) |
+| **Cool-down Breaks** | 20-45 min breaks after every 4-6 actions |
+| **Circadian Timing** | Slower at night, faster during active hours |
+| **Session Health** | Graceful Chrome reload every 2 hours |
+| **CAPTCHA Detection** | AI visual reasoning only — immediately pauses, never bypasses |
+| **No hardcoded patterns** | Zero regex matching anywhere in the codebase |
+
+---
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+npm test
+
+# Run individual test suites
+npm run test:humanizer        # CursorPhysics, KeystrokeSynthesizer, RhythmManager, LocalGeminiEngine
+npm run test:advanced         # Checkpoint detection, Rate limits, TrendInjector, SessionManager
+```
+
+Current test results:
+- **Humanizer suite**: 49/49 PASS ✅
+- **Advanced protocols suite**: 102/102 PASS ✅
+
+---
+
+## 🎛️ Terminal CLI (Advanced)
+
+The terminal also accepts commands (fallback for headless/daemon mode):
+
+```
+pause               → Pause automation
+resume              → Resume automation
+mode feed           → Switch to Feed Discovery
+mode dm             → Switch to DM Inbox
+mode notifications  → Switch to Notifications
+target @username    → Focus on specific profile
+status              → Show live telemetry
+exit                → Stop and exit
+```
+
+---
+
+## 📡 WebSocket API
+
+The dashboard server exposes a WebSocket at `ws://localhost:3000/ws`.
+
+**Server → Client messages:**
+
+| Type | Payload | Description |
+|---|---|---|
+| `TELEMETRY` | `AgentTelemetry` | Full telemetry update |
+| `PROFILE` | `CustomerProfile` | Current customer profile |
+| `INTENT` | `OperationIntent` | Session intent for review |
+| `INTENT_APPROVED` | — | Intent was approved |
+| `SECURITY_ALERT` | `{message}` | Security challenge detected |
+| `LOG` | `{entry}` | Real-time log entry |
+
+**REST API:**
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/profile` | Save customer profile |
+| `GET` | `/api/profile` | Get current profile |
+| `GET` | `/api/profile/saved` | Load saved profile from disk |
+| `GET` | `/api/intent` | Get current intent |
+| `POST` | `/api/approve` | Approve the intent |
+| `POST` | `/api/control` | Send control command |
+| `GET` | `/api/status` | Current telemetry snapshot |
+
+---
+
+## ⚠️ Important Notes
+
+1. **Manual Login Required** — Log into Threads in the Chrome window **before** starting. The automation does not handle login.
+2. **CAPTCHA = Immediate Pause** — If a security challenge is detected, automation pauses and waits for your manual intervention. Resume via the dashboard.
+3. **Local Only** — All AI reasoning happens on your local machine via Antigravity. No cloud APIs are used.
+4. **Profile Saved Locally** — Your profile is saved to `.customer-profile.json` in the project root. It's auto-loaded on next startup.
+
+---
+
+## 📁 Files to Git Ignore
+
+```gitignore
+.chrome-session-profile/
+.customer-profile.json
+.env
+node_modules/
+```
+
+---
+
+## 🛠️ Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| "Cannot connect to Chrome CDP" | Make sure Chrome is running with `--remote-debugging-port=9222` |
+| "Local host query failed" | Check that Antigravity / local Gemini is running on the configured port |
+| Dashboard not loading | Check that port 3000 is not in use by another app |
+| Security alert triggered | Complete the challenge manually in Chrome, then click Resume |
+| Automation running but nothing happening | Check the Live Log on the dashboard for error details |
+
+---
+
+## 📜 License
+
+MIT — Use responsibly and in accordance with Threads' Terms of Service.

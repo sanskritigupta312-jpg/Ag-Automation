@@ -55,44 +55,91 @@ export class KeystrokeSynthesizer {
 
     let text = input;
 
-    // Suppress em-dashes and en-dashes
-    text = text.replace(/[\u2014\u2013]/g, ', ');
-    text = text.replace(/\s*--\s*/g, ', ');
+    // Suppress em-dashes and en-dashes without regex
+    text = text.split('\u2014').join(', ');
+    text = text.split('\u2013').join(', ');
+    text = text.split('--').join(', ');
+    text = text.split(' - ').join(', ');
 
-    // Suppress isolated hyphens in regular prose (e.g. "word - word" -> "word, word")
-    // Keep hyphens in compound words like "real-time" if needed, but remove standalone hyphens
-    text = text.replace(/\s+-\s+/g, ', ');
+    // Suppress structural bullet lists or numbering at line starts without regex
+    const lines = text.split('\n');
+    const cleanedLines = lines.map((line) => {
+      let trimmed = line.trimStart();
+      while (
+        trimmed.startsWith('* ') ||
+        trimmed.startsWith('- ') ||
+        trimmed.startsWith('• ') ||
+        trimmed.startsWith('– ') ||
+        trimmed.startsWith('— ')
+      ) {
+        trimmed = trimmed.slice(2).trimStart();
+      }
+      if (trimmed.length >= 3) {
+        const first = trimmed.charAt(0);
+        const second = trimmed.charAt(1);
+        const third = trimmed.charAt(2);
+        if (first >= '0' && first <= '9' && (second === '.' || second === ')') && third === ' ') {
+          trimmed = trimmed.slice(3).trimStart();
+        }
+      }
+      return trimmed;
+    });
+    text = cleanedLines.join('\n');
 
-    // Suppress structural bullet lists or numbering at line starts
-    text = text.replace(/^[\s*•\-–—]+\s*/gm, '');
-    text = text.replace(/^\d+[\.)]\s*/gm, '');
-
-    // Strip canned robotic openings and filler phrases
-    const roboticPhrases = [
-      /^indeed[,\s]*/i,
-      /^furthermore[,\s]*/i,
-      /^moreover[,\s]*/i,
-      /^in conclusion[,\s]*/i,
-      /^great post[!,.\s]*/i,
-      /^thanks for sharing[!,.\s]*/i,
-      /^this is a great point[!,.\s]*/i,
-      /^as an ai[,\s]*/i,
+    // Strip canned robotic openings and filler phrases without regex
+    const roboticOpeners = [
+      'as an ai',
+      'in conclusion',
+      'great post',
+      'thanks for sharing',
+      'this is a great point',
+      'indeed',
+      'furthermore',
+      'moreover',
+      'certainly',
+      'absolutely',
     ];
 
-    for (const phrase of roboticPhrases) {
-      text = text.replace(phrase, '');
+    const lower = text.toLowerCase();
+    for (const opener of roboticOpeners) {
+      if (lower.startsWith(opener)) {
+        text = text.slice(opener.length).trimStart();
+        if (text.startsWith(',') || text.startsWith(':') || text.startsWith('.')) {
+          text = text.slice(1).trimStart();
+        }
+        break;
+      }
     }
 
-    // Collapse multiple blank lines or redundant spaces
-    text = text.replace(/\n{2,}/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();
+    // Collapse multiple blank lines and redundant spaces without regex
+    while (text.includes('  ')) {
+      text = text.split('  ').join(' ');
+    }
+    while (text.includes('\t')) {
+      text = text.split('\t').join(' ');
+    }
+    while (text.includes('\n\n\n')) {
+      text = text.split('\n\n\n').join('\n\n');
+    }
+    text = text.trim();
 
-    // Natural social media casing: relax rigid first-letter capitalization
-    if (/^[A-Z][a-z]/.test(text) && Math.random() < 0.35) {
-      text = text.charAt(0).toLowerCase() + text.slice(1);
+    // Natural social media casing: relax rigid first-letter capitalization without regex
+    if (text.length >= 2) {
+      const first = text.charAt(0);
+      const second = text.charAt(1);
+      if (first >= 'A' && first <= 'Z' && second >= 'a' && second <= 'z' && Math.random() < 0.35) {
+        text = first.toLowerCase() + text.slice(1);
+      }
     }
 
-    // Trim trailing formal period if single casual sentence
-    if (text.endsWith('.') && !text.endsWith('..') && !text.includes('\n') && text.length < 120 && Math.random() < 0.5) {
+    // Trim trailing formal period if single casual sentence without regex
+    if (
+      text.endsWith('.') &&
+      !text.endsWith('..') &&
+      !text.includes('\n') &&
+      text.length < 120 &&
+      Math.random() < 0.5
+    ) {
       text = text.slice(0, -1);
     }
 
